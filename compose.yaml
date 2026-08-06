@@ -1,0 +1,144 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: zabbix
+      POSTGRES_USER: zabbix
+      POSTGRES_PASSWORD: zabbix-db-compose
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zabbix -d zabbix"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+      start_period: 5s
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks: [demo]
+
+  zabbix-server:
+    image: zabbix/zabbix-server-pgsql:alpine-7.4.12
+    environment:
+      DB_SERVER_HOST: postgres
+      POSTGRES_DB: zabbix
+      POSTGRES_USER: zabbix
+      POSTGRES_PASSWORD: zabbix-db-compose
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z -w 2 127.0.0.1 10051"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+      start_period: 10s
+    networks: [demo]
+
+  zabbix-web:
+    image: zabbix/zabbix-web-nginx-pgsql:alpine-7.4.12
+    environment:
+      DB_SERVER_HOST: postgres
+      POSTGRES_DB: zabbix
+      POSTGRES_USER: zabbix
+      POSTGRES_PASSWORD: zabbix-db-compose
+      ZBX_SERVER_HOST: zabbix-server
+      PHP_TZ: UTC
+    depends_on:
+      postgres:
+        condition: service_healthy
+      zabbix-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+      start_period: 10s
+    ports:
+      - target: 8080
+        published: "${ZABBIX_WEB_PORT:-8080}"
+        host_ip: 127.0.0.1
+        protocol: tcp
+    networks: [demo]
+
+  bootstrap:
+    image: zabbix-otel-demo-tools:local
+    build:
+      context: .
+      dockerfile: demo/Dockerfile.tools
+    user: "0:0"
+    environment:
+      ZABBIX_API_URL: http://zabbix-web:8080/api_jsonrpc.php
+      ZABBIX_USERNAME: Admin
+      ZABBIX_PASSWORD: zabbix
+    depends_on:
+      zabbix-web:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "/demo/bootstrap.sh"]
+    volumes:
+      - ./demo/bootstrap.sh:/demo/bootstrap.sh:ro
+      - ./demo/collector.yaml.tmpl:/demo/collector.yaml.tmpl:ro
+      - demo-config:/generated
+    networks: [demo]
+
+  producer:
+    image: zabbix/zabbix-agent2:alpine-7.4.12
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+      zabbix-server:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "/demo/producer.sh"]
+    volumes:
+      - ./demo/producer.sh:/demo/producer.sh:ro
+    networks: [demo]
+
+  victoriametrics:
+    image: victoriametrics/victoria-metrics:v1.148.0
+    command: ["-storageDataPath=/victoria-metrics-data", "-retentionPeriod=1d"]
+    volumes:
+      - victoriametrics-data:/victoria-metrics-data
+    ports:
+      - target: 8428
+        published: "${VICTORIAMETRICS_PORT:-8428}"
+        host_ip: 127.0.0.1
+        protocol: tcp
+    networks: [demo]
+
+  otelcol-zabbix:
+    image: zabbix-otel-collector:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["--config=/generated/otelcol.yaml"]
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+      victoriametrics:
+        condition: service_started
+    volumes:
+      - demo-config:/generated:ro
+    networks: [demo]
+
+  verify:
+    image: zabbix-otel-demo-tools:local
+    build:
+      context: .
+      dockerfile: demo/Dockerfile.tools
+    profiles: [verify]
+    depends_on:
+      victoriametrics:
+        condition: service_started
+    entrypoint: ["/bin/sh", "/demo/verify-entrypoint.sh"]
+    volumes:
+      - ./demo/verify-entrypoint.sh:/demo/verify-entrypoint.sh:ro
+      - ./demo/verify.sh:/demo/verify.sh:ro
+    networks: [demo]
+
+networks:
+  demo:
+    internal: false
+
+volumes:
+  demo-config: {}
+  postgres-data: {}
+  victoriametrics-data: {}

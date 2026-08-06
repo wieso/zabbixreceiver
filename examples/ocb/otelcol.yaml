@@ -1,0 +1,19 @@
+receivers:
+  zabbix:
+    zabbix:
+      url: ${env:ZABBIX_URL}
+      token: ${env:ZABBIX_TOKEN}
+
+processors:
+  batch: {}
+
+exporters:
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    metrics:
+      receivers: [zabbix]
+      processors: [batch]
+      exporters: [debug]

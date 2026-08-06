@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Go and packaging verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go 1.25
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.25.x'
+          cache: true
+          cache-dependency-path: |
+            go.sum
+            receiver/zabbixreceiver/go.sum
+
+      - name: Download dependencies
+        run: make download
+
+      - name: Enforce tidy module files
+        run: |
+          make tidy
+          git diff --check
+          git diff --exit-code
+
+      - name: Enforce gofmt
+        run: |
+          make fmt
+          git diff --check
+          git diff --exit-code
+
+      - name: Test
+        run: make test
+
+      - name: Race test
+        run: make test-race
+
+      - name: Vet
+        run: make vet
+
+      - name: Build
+        run: make build
+
+      - name: Validate Collector configuration
+        run: make validate-config
+
+      - name: Verify Collector Builder integration
+        run: make verify-ocb-local
+
+      - name: Test packaging contracts
+        run: go test ./internal/packaging -count=1
+
+      - name: Validate Compose configuration
+        run: make compose-config
+
+      - name: Build container image
+        run: docker build -t zabbix-otel-collector:verify .
+
+      - name: Verify container component inventory
+        run: docker run --rm zabbix-otel-collector:verify components
+
+  demo:
+    name: Real Zabbix to VictoriaMetrics demo
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Start demo
+        run: make demo-up
+
+      - name: Verify real metric
+        run: make demo-verify
+
+      - name: Remove demo containers, volumes, and orphans
+        if: always()
+        run: docker compose down --volumes --remove-orphans

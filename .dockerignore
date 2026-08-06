@@ -1,0 +1,12 @@
+.git
+.github
+.superpowers
+.worktrees
+bin
+coverage.out
+deployments
+demo
+docs
+compose.yaml
+*.local
+*.md

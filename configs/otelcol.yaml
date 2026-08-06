@@ -1,0 +1,40 @@
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+receivers:
+  zabbix:
+    schedule:
+      jitter: 5s
+      jobs:
+        discover: {enabled: true, run_on_start: true, interval: 5m, timeout: 60s}
+        values: {enabled: true, run_on_start: false, interval: 30s, timeout: 20s}
+    prom:
+      prefix: zabbix_
+      const_labels: {env: production, instance: zabbix-01}
+    zabbix:
+      url: ${env:ZABBIX_URL}
+      token: ${env:ZABBIX_TOKEN}
+      timeout: 30s
+      limits: {max_metrics_per_host: 1000, items_per_request: 1000}
+      filters: {host_include_regex: "", host_exclude_regex: "", item_key_include_regex: "", item_key_exclude_regex: ""}
+processors:
+  memory_limiter: {check_interval: 1s, limit_mib: 256}
+  batch: {}
+exporters:
+  prometheusremotewrite:
+    endpoint: ${env:VICTORIAMETRICS_REMOTE_WRITE_URL}
+service:
+  telemetry:
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+  extensions: [health_check]
+  pipelines:
+    metrics:
+      receivers: [zabbix]
+      processors: [memory_limiter, batch]
+      exporters: [prometheusremotewrite]

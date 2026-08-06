@@ -1,0 +1,32 @@
+[Unit]
+Description=OpenTelemetry Collector with Zabbix receiver
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=otelcol-zabbix
+Group=otelcol-zabbix
+EnvironmentFile=/etc/otelcol-zabbix/otelcol-zabbix.env
+ExecStart=/usr/local/bin/otelcol-zabbix --config=/etc/otelcol-zabbix/config.yaml
+Restart=on-failure
+RestartSec=5s
+StateDirectory=otelcol-zabbix
+StateDirectoryMode=0750
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+ReadWritePaths=/var/lib/otelcol-zabbix
+
+[Install]
+WantedBy=multi-user.target
