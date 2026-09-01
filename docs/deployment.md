@@ -2,6 +2,33 @@
 
 The supplied paths all run the same custom Collector distribution. Build and pin an artifact appropriate for your environment, supply credentials only at runtime, and protect the unauthenticated health and telemetry endpoints.
 
+## Prebuilt release binary
+
+The supported release binaries run on Linux `amd64` and `arm64`; Go is not required. Select a version from the [GitHub Releases page](https://github.com/wieso/zabbixreceiver/releases), then use the matching `ARCH` value:
+
+```bash
+VERSION=1.2.3
+ARCH=amd64
+curl -fLO "https://github.com/wieso/zabbixreceiver/releases/download/v${VERSION}/otelcol-zabbix_${VERSION}_linux_${ARCH}.tar.gz"
+curl -fLO "https://github.com/wieso/zabbixreceiver/releases/download/v${VERSION}/checksums.txt"
+sha256sum -c checksums.txt --ignore-missing
+tar -xzf "otelcol-zabbix_${VERSION}_linux_${ARCH}.tar.gz"
+sudo install -m 0755 "otelcol-zabbix_${VERSION}_linux_${ARCH}/otelcol-zabbix" /usr/local/bin/otelcol-zabbix
+sudo install -d -m 0755 /etc/otelcol-zabbix
+sudo install -m 0644 "otelcol-zabbix_${VERSION}_linux_${ARCH}/configs/otelcol.yaml" /etc/otelcol-zabbix/config.yaml
+```
+
+Set the three endpoint/credential variables at runtime and start the collector:
+
+```bash
+ZABBIX_URL=https://zabbix.example.com/api_jsonrpc.php \
+ZABBIX_TOKEN=replace-with-zabbix-api-token \
+VICTORIAMETRICS_REMOTE_WRITE_URL=https://victoriametrics.example.com/api/v1/write \
+/usr/local/bin/otelcol-zabbix --config /etc/otelcol-zabbix/config.yaml
+```
+
+The token shown above is a placeholder. Use HTTPS, avoid putting real credentials in shared command history, and use a service secret mechanism for production. To run the downloaded binary as a managed service, continue with the [VM/systemd](#vmsystemd) section; the unit and environment-file templates are maintained in the repository under `deployments/systemd/`.
+
 ## Local binary
 
 Requirements: Go 1.25 or newer, a Zabbix API endpoint, and a Prometheus remote-write endpoint.

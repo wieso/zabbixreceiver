@@ -1,0 +1,76 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish release assets
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out tagged commit
+        uses: actions/checkout@v4
+
+      - name: Set up Go 1.25
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.25.x'
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Enforce gofmt
+        run: |
+          make fmt
+          git diff --check
+          git diff --exit-code
+
+      - name: Test
+        run: make test
+
+      - name: Race test
+        run: make test-race
+
+      - name: Vet
+        run: make vet
+
+      - name: Validate Collector configuration
+        run: make validate-config
+
+      - name: Build and validate release assets
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          make release-artifacts VERSION="$VERSION"
+          (cd dist && sha256sum -c checksums.txt)
+          test "$(find dist -maxdepth 1 -type f | wc -l)" -eq 3
+          test "$(find dist -maxdepth 1 -type f -name '*.tar.gz' | wc -l)" -eq 2
+
+      - name: Reject an existing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          if gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "GitHub Release $VERSION already exists; refusing to replace it" >&2
+            exit 1
+          fi
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          overwrite_files: false
+          files: |
+            dist/otelcol-zabbix_*_linux_amd64.tar.gz
+            dist/otelcol-zabbix_*_linux_arm64.tar.gz
+            dist/checksums.txt
