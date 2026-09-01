@@ -1,4 +1,4 @@
-.PHONY: fmt download tidy test test-race vet build validate-config verify-ocb-local docker-build compose-config demo-up demo-verify demo-down
+.PHONY: fmt download tidy test test-race vet build validate-config verify-ocb-local release-artifacts docker-build compose-config demo-up demo-verify demo-down
 
 VERSION ?= dev
 IMAGE ?= zabbix-otel-collector:local
@@ -40,6 +40,9 @@ verify-ocb-local:
 	go run go.opentelemetry.io/collector/cmd/builder@$(OCB_VERSION) --skip-strict-versioning=false --config testdata/ocb/builder-config.yaml
 	$(OCB_LOCAL_OUTPUT)/otelcol-zabbix components | grep -q 'zabbix'
 	ZABBIX_URL=http://zabbix.example/api_jsonrpc.php ZABBIX_TOKEN=dummy-token $(OCB_LOCAL_OUTPUT)/otelcol-zabbix validate --config examples/ocb/otelcol.yaml
+
+release-artifacts:
+	VERSION=$(VERSION) ./scripts/package-release.sh
 
 docker-build:
 	docker build -t $(IMAGE) .

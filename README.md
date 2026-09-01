@@ -4,6 +4,33 @@ This repository provides a native OpenTelemetry Collector metrics receiver that 
 
 See the [approved design](docs/superpowers/specs/2026-08-05-zabbix-opentelemetry-receiver-design.md) for the receiver's compatibility boundary and completion criteria.
 
+## Download a release
+
+Prebuilt Linux binaries are available on the [GitHub Releases page](https://github.com/wieso/zabbixreceiver/releases). Choose `amd64` for most Intel/AMD servers or `arm64` for 64-bit ARM servers. The release archives do not require Go.
+
+For example, download version `v1.2.3` on a Linux `amd64` host and verify it before installing:
+
+```bash
+VERSION=1.2.3
+ARCH=amd64
+curl -fLO "https://github.com/wieso/zabbixreceiver/releases/download/v${VERSION}/otelcol-zabbix_${VERSION}_linux_${ARCH}.tar.gz"
+curl -fLO "https://github.com/wieso/zabbixreceiver/releases/download/v${VERSION}/checksums.txt"
+sha256sum -c checksums.txt --ignore-missing
+tar -xzf "otelcol-zabbix_${VERSION}_linux_${ARCH}.tar.gz"
+cd "otelcol-zabbix_${VERSION}_linux_${ARCH}"
+```
+
+Supply runtime endpoints and credentials, then start the included configuration:
+
+```bash
+ZABBIX_URL=https://zabbix.example.com/api_jsonrpc.php \
+ZABBIX_TOKEN=replace-with-zabbix-api-token \
+VICTORIAMETRICS_REMOTE_WRITE_URL=https://victoriametrics.example.com/api/v1/write \
+./otelcol-zabbix --config configs/otelcol.yaml
+```
+
+`replace-with-zabbix-api-token` is a placeholder, not a working credential. Use HTTPS and your platform's secret-management facility in production. For a persistent systemd installation, follow the [systemd deployment instructions](docs/deployment.md#vmsystemd).
+
 ## Architecture
 
 ```text

@@ -198,6 +198,46 @@ func TestLicenseContract(t *testing.T) {
 	}
 }
 
+func TestReleasePackagingContract(t *testing.T) {
+	makefile := readAsset(t, "Makefile")
+	for _, want := range []string{
+		"release-artifacts",
+		"VERSION=$(VERSION) ./scripts/package-release.sh",
+	} {
+		if !strings.Contains(makefile, want) {
+			t.Errorf("Makefile missing release packaging contract %q", want)
+		}
+	}
+
+	script := readAsset(t, "scripts/package-release.sh")
+	for _, want := range []string{
+		"^v[0-9]+\\.[0-9]+\\.[0-9]+$",
+		"linux/amd64",
+		"linux/arm64",
+		"CGO_ENABLED=0",
+		"main.version",
+		"checksums.txt",
+		"otelcol-zabbix_",
+	} {
+		if !strings.Contains(script, want) {
+			t.Errorf("release packaging script missing %q", want)
+		}
+	}
+
+	workflow := readAsset(t, ".github/workflows/release.yml")
+	for _, want := range []string{
+		"v*.*.*",
+		"contents: write",
+		"make release-artifacts",
+		"softprops/action-gh-release@v2",
+		"checksums.txt",
+	} {
+		if !strings.Contains(workflow, want) {
+			t.Errorf("release workflow missing %q", want)
+		}
+	}
+}
+
 func TestDockerfileContract(t *testing.T) {
 	dockerfile := readAsset(t, "Dockerfile")
 	for _, want := range []string{

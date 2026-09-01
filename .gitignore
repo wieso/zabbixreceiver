@@ -2,6 +2,7 @@
 .worktrees/
 .superpowers/
 bin/
+dist/
 coverage.out
 *.local
 .idea/
