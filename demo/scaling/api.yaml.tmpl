@@ -1,0 +1,36 @@
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+receivers:
+  zabbix:
+    mode: api
+    schedule:
+      jitter: 500ms
+      jobs:
+        discover: {enabled: true, run_on_start: true, interval: 30s, timeout: 10s}
+        values: {enabled: true, run_on_start: false, interval: 3s, timeout: 2s}
+    prom:
+      prefix: scale_api_
+      const_labels: {env: scaling, collector: '@@COLLECTOR@@'}
+    zabbix:
+      url: http://zabbix-web:8080/api_jsonrpc.php
+      token: '@@API_TOKEN@@'
+      timeout: 2s
+      limits: {items_per_request: 1000, max_metrics_per_host: 1000}
+      filters:
+        host_include_regex: '^@@HOST@@$'
+        item_key_include_regex: '^demo\.counter$'
+processors:
+  memory_limiter: {check_interval: 1s, limit_mib: 192, spike_limit_mib: 48}
+  batch: {timeout: 1s, send_batch_size: 1000, send_batch_max_size: 1000}
+exporters:
+  prometheusremotewrite:
+    endpoint: http://victoriametrics:8428/api/v1/write
+    remote_write_queue: {enabled: true, queue_size: 100, num_consumers: 1}
+service:
+  extensions: [health_check]
+  pipelines:
+    metrics:
+      receivers: [zabbix]
+      processors: [memory_limiter, batch]
+      exporters: [prometheusremotewrite]

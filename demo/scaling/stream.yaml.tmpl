@@ -1,0 +1,28 @@
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+receivers:
+  zabbix:
+    mode: streaming
+    streaming:
+      endpoint: 0.0.0.0:8081
+      token: '@@STREAM_TOKEN@@'
+      max_request_body_size: 1048576
+      timeout: 10s
+    prom:
+      prefix: scale_stream_
+      const_labels: {env: scaling, collector: '@@COLLECTOR@@'}
+processors:
+  memory_limiter: {check_interval: 1s, limit_mib: 192, spike_limit_mib: 48}
+  batch: {timeout: 1s, send_batch_size: 1000, send_batch_max_size: 1000}
+exporters:
+  prometheusremotewrite:
+    endpoint: http://victoriametrics:8428/api/v1/write
+    remote_write_queue: {enabled: true, queue_size: 100, num_consumers: 1}
+service:
+  extensions: [health_check]
+  pipelines:
+    metrics:
+      receivers: [zabbix]
+      processors: [memory_limiter, batch]
+      exporters: [prometheusremotewrite]

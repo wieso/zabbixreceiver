@@ -3,6 +3,7 @@ package zabbixreceiver
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"regexp"
@@ -16,9 +17,26 @@ import (
 var metricNamePattern = regexp.MustCompile(`^[a-zA-Z_:][a-zA-Z0-9_:]*$`)
 
 type Config struct {
-	Schedule ScheduleConfig `mapstructure:"schedule"`
-	Prom     PromConfig     `mapstructure:"prom"`
-	Zabbix   ZabbixConfig   `mapstructure:"zabbix"`
+	Mode      string          `mapstructure:"mode"`
+	Streaming StreamingConfig `mapstructure:"streaming"`
+	Schedule  ScheduleConfig  `mapstructure:"schedule"`
+	Prom      PromConfig      `mapstructure:"prom"`
+	Zabbix    ZabbixConfig    `mapstructure:"zabbix"`
+	Metadata  MetadataConfig  `mapstructure:"metadata"`
+}
+
+type MetadataConfig struct {
+	Enabled           bool     `mapstructure:"enabled"`
+	InheritedHostTags bool     `mapstructure:"inherited_host_tags"`
+	InventoryFields   []string `mapstructure:"inventory_fields"`
+}
+
+type StreamingConfig struct {
+	EnrichWithAPI      bool                `mapstructure:"enrich_with_api"`
+	Endpoint           string              `mapstructure:"endpoint"`
+	Token              configopaque.String `mapstructure:"token"`
+	MaxRequestBodySize int64               `mapstructure:"max_request_body_size"`
+	Timeout            time.Duration       `mapstructure:"timeout"`
 }
 
 type ScheduleConfig struct {
@@ -65,6 +83,9 @@ type FiltersConfig struct {
 
 func createDefaultConfig() component.Config {
 	return &Config{
+		Mode:      "api",
+		Metadata:  MetadataConfig{Enabled: true, InheritedHostTags: true},
+		Streaming: StreamingConfig{Endpoint: "127.0.0.1:8081", MaxRequestBodySize: 10485760, Timeout: 30 * time.Second},
 		Schedule: ScheduleConfig{
 			Jitter: 5 * time.Second,
 			Jobs: JobsConfig{
@@ -82,6 +103,7 @@ func createDefaultConfig() component.Config {
 
 func (c *Config) Clone() *Config {
 	clone := *c
+	clone.Metadata.InventoryFields = append([]string(nil), c.Metadata.InventoryFields...)
 	if c.Prom.ConstLabels != nil {
 		clone.Prom.ConstLabels = make(map[string]string, len(c.Prom.ConstLabels))
 		for key, value := range c.Prom.ConstLabels {
@@ -92,6 +114,9 @@ func (c *Config) Clone() *Config {
 }
 
 func (c *Config) ResolveEnv(getenv func(string) (string, bool)) error {
+	if c.Mode == "streaming" && !c.Streaming.EnrichWithAPI {
+		return nil
+	}
 	if value, ok := getenv("ZABBIX_URL"); ok {
 		c.Zabbix.URL = value
 	}
@@ -132,6 +157,37 @@ func (c *Config) Validate() error {
 
 func (c *Config) validateResolved() error {
 	var errs []error
+	for _, field := range c.Metadata.InventoryFields {
+		if !regexp.MustCompile(`^[a-z][a-z0-9_]*$`).MatchString(field) {
+			errs = append(errs, errors.New("metadata.inventory_fields must contain non-empty inventory field names"))
+		}
+	}
+	if c.Mode != "api" && c.Mode != "streaming" {
+		errs = append(errs, errors.New("mode must be api or streaming"))
+	}
+	if c.Mode == "streaming" {
+		if _, port, err := net.SplitHostPort(c.Streaming.Endpoint); err != nil || port == "" {
+			errs = append(errs, errors.New("streaming.endpoint must be host:port"))
+		}
+		if c.Streaming.MaxRequestBodySize <= 0 {
+			errs = append(errs, errors.New("streaming.max_request_body_size must be positive"))
+		}
+		if c.Streaming.Timeout <= 0 {
+			errs = append(errs, errors.New("streaming.timeout must be positive"))
+		}
+		if !metricNamePattern.MatchString(c.Prom.Prefix) {
+			errs = append(errs, errors.New("prom.prefix must be a valid Prometheus metric name prefix"))
+		}
+		if !c.Streaming.EnrichWithAPI {
+			return errors.Join(errs...)
+		}
+		if !c.Metadata.Enabled {
+			errs = append(errs, errors.New("streaming.enrich_with_api requires metadata.enabled"))
+		}
+		if !c.Schedule.Jobs.Discover.Enabled {
+			errs = append(errs, errors.New("streaming.enrich_with_api requires schedule.jobs.discover.enabled"))
+		}
+	}
 
 	parsedURL, err := url.Parse(c.Zabbix.URL)
 	if err != nil || parsedURL.Scheme == "" || parsedURL.Host == "" || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
@@ -155,7 +211,9 @@ func (c *Config) validateResolved() error {
 		}
 	}
 	validateJob("discover", c.Schedule.Jobs.Discover)
-	validateJob("values", c.Schedule.Jobs.Values)
+	if c.Mode != "streaming" {
+		validateJob("values", c.Schedule.Jobs.Values)
+	}
 	if !c.Schedule.Jobs.Discover.Enabled && !c.Schedule.Jobs.Values.Enabled {
 		errs = append(errs, errors.New("schedule.jobs must enable discover or values"))
 	}

@@ -1,73 +1,75 @@
-# GitHub Binary Release Implementation Plan
+# План реализации бинарных релизов GitHub
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> Исторический материал. [Статус и указатель](../README.md) · [Актуальная документация](../../README.md). Не используйте как инструкцию для текущей версии.
 
-**Goal:** Publish verified Linux `amd64` and `arm64` collector binaries as GitHub Release assets with checksums and no-Go startup instructions.
+> **Для агентов-исполнителей:** ОБЯЗАТЕЛЬНЫЙ ВСПОМОГАТЕЛЬНЫЙ НАВЫК: используйте superpowers:subagent-driven-development (рекомендуется) или superpowers:executing-plans для последовательного выполнения задач этого плана. Для отслеживания шагов используются флажки (`- [ ]`).
 
-**Architecture:** Keep release packaging in a repository script invoked by `make release-artifacts`; the script creates only explicitly allowed files in deterministic archive layouts and validates them. A tag-triggered GitHub Actions workflow runs the existing verification suite, invokes the packaging target, revalidates checksums/assets, and creates the release with GitHub's official release action.
+**Цель:** публиковать проверенные бинарные файлы Collector для Linux `amd64` и `arm64` как файлы GitHub Release с контрольными суммами и инструкциями запуска без Go.
 
-**Tech Stack:** Go 1.25, Make, POSIX shell, tar, sha256sum, GitHub Actions, `softprops/action-gh-release@v2`.
+**Архитектура:** хранить упаковку релиза в скрипте репозитория, вызываемом через `make release-artifacts`; скрипт создаёт только явно разрешённые файлы с детерминированной структурой архивов и проверяет их. Процесс GitHub Actions, запускаемый по тегу, выполняет существующий набор проверок, вызывает цель упаковки, повторно проверяет контрольные суммы/файлы и создаёт релиз с помощью официального действия выпуска релизов GitHub.
 
-**Spec:** `docs/superpowers/specs/2026-09-01-github-binary-release-design.md`
+**Технологии:** Go 1.25, Make, POSIX shell, tar, sha256sum, GitHub Actions, `softprops/action-gh-release@v2`.
 
-## Global Constraints
+**Спецификация:** `docs/superpowers/specs/2026-09-01-github-binary-release-design.md`
 
-- Support only Linux `amd64` and Linux `arm64` in the first release.
-- Accept only versions matching `vMAJOR.MINOR.PATCH`.
-- Build with `CGO_ENABLED=0`, `-trimpath`, and `-ldflags "-s -w -X main.version=$(VERSION)"`.
-- Never copy generated runtime configuration or real credentials into release staging directories.
-- Publish exactly two archives and `checksums.txt`.
-- Preserve the existing Docker, Compose, Kubernetes, systemd, and demo workflows.
+## Общие ограничения
 
-## Files and responsibilities
+- В первом релизе поддерживать только Linux `amd64` и Linux `arm64`.
+- Принимать только версии формата `vMAJOR.MINOR.PATCH`.
+- Собирать с `CGO_ENABLED=0`, `-trimpath` и `-ldflags "-s -w -X main.version=$(VERSION)"`.
+- Никогда не копировать сгенерированную рабочую конфигурацию или реальные учётные данные в промежуточные каталоги релиза.
+- Публиковать ровно два архива и `checksums.txt`.
+- Сохранить существующие процессы Docker, Compose, Kubernetes, systemd и демонстрации.
 
-- Create: `scripts/package-release.sh` — cross-compiles, stages, archives, checksums, and validates release assets.
-- Modify: `Makefile` — expose `release-artifacts` and include it in `.PHONY`.
-- Create: `.github/workflows/release.yml` — tag-triggered verification and GitHub Release publication.
-- Modify: `README.md` — download-first quick start for release users.
-- Modify: `docs/deployment.md` — prebuilt binary installation instructions.
-- Modify: `internal/packaging/assets_test.go` — add static contract assertions for the release script, Make target, and release workflow so the packaging interface cannot drift silently.
+## Файлы и их назначение
 
-### Task 1: Add deterministic local release packaging
+- Создать: `scripts/package-release.sh` — выполняет кросс-компиляцию, подготовку, архивирование, расчёт контрольных сумм и проверку файлов релиза.
+- Изменить: `Makefile` — предоставить `release-artifacts` и включить её в `.PHONY`.
+- Создать: `.github/workflows/release.yml` — проверка и публикация GitHub Release по тегу.
+- Изменить: `README.md` — быстрый старт со скачиванием готовой сборки для пользователей релиза.
+- Изменить: `docs/deployment.md` — инструкции установки готового бинарного файла.
+- Изменить: `internal/packaging/assets_test.go` — добавить статические проверки контракта скрипта релиза, цели Make и процесса выпуска, чтобы интерфейс упаковки не мог измениться незаметно.
 
-**Files:**
-- Create: `scripts/package-release.sh`
-- Modify: `Makefile`
+### Задача 1: добавить детерминированную локальную упаковку релиза
 
-**Interfaces:**
-- Consumes: `VERSION` from the Make environment and repository paths `cmd/otelcol-zabbix`, `configs/otelcol.yaml`, `README.md`, `docs/configuration.md`, and `docs/deployment.md`.
-- Produces: `dist/otelcol-zabbix_<version>_linux_amd64.tar.gz`, `dist/otelcol-zabbix_<version>_linux_arm64.tar.gz`, and `dist/checksums.txt`.
+**Файлы:**
+- Создать: `scripts/package-release.sh`
+- Изменить: `Makefile`
 
-- [ ] **Step 1: Define the Make target and script contract**
+**Интерфейсы:**
+- Принимает: `VERSION` из окружения Make и пути репозитория `cmd/otelcol-zabbix`, `configs/otelcol.yaml`, `README.md`, `docs/configuration.md` и `docs/deployment.md`.
+- Создаёт: `dist/otelcol-zabbix_<version>_linux_amd64.tar.gz`, `dist/otelcol-zabbix_<version>_linux_arm64.tar.gz` и `dist/checksums.txt`.
 
-Add `release-artifacts` to `.PHONY` and invoke `scripts/package-release.sh` with `VERSION`:
+- [ ] **Шаг 1: определить цель Make и контракт скрипта**
+
+Добавить `release-artifacts` в `.PHONY` и вызывать `scripts/package-release.sh` с `VERSION`:
 
 ```make
 release-artifacts:
 	VERSION=$(VERSION) ./scripts/package-release.sh
 ```
 
-Make the script executable.
+Сделать скрипт исполняемым.
 
-- [ ] **Step 2: Implement version and target validation**
+- [ ] **Шаг 2: реализовать валидацию версии и целевых платформ**
 
-In `scripts/package-release.sh`, enable strict shell options, require `VERSION` to match `^v[0-9]+\.[0-9]+\.[0-9]+$`, derive the archive version by removing the leading `v`, and define the fixed target list `linux/amd64` and `linux/arm64`. Exit with a field-specific error for an unset or malformed version.
+В `scripts/package-release.sh` включить строгие параметры оболочки, требовать соответствия `VERSION` выражению `^v[0-9]+\.[0-9]+\.[0-9]+$`, получать версию архива удалением начальной `v` и задать фиксированный список платформ `linux/amd64` и `linux/arm64`. Если версия не задана или имеет неверный формат, завершаться с ошибкой, указывающей поле.
 
-- [ ] **Step 3: Implement isolated staging and cross-compilation**
+- [ ] **Шаг 3: реализовать изолированную подготовку и кросс-компиляцию**
 
-Create a temporary directory with a cleanup trap. For each target, build `./cmd/otelcol-zabbix` using `GOOS=linux`, the target `GOARCH`, `CGO_ENABLED=0`, `-trimpath`, and `-ldflags="-s -w -X main.version=${VERSION}"`. Copy only the binary and the four explicitly listed documentation/configuration paths into the target directory, preserving `configs/` and `docs/` subdirectories.
+Создать временный каталог с обработчиком очистки. Для каждой платформы собрать `./cmd/otelcol-zabbix` с `GOOS=linux`, целевым `GOARCH`, `CGO_ENABLED=0`, `-trimpath` и `-ldflags="-s -w -X main.version=${VERSION}"`. Копировать в целевой каталог только бинарный файл и четыре явно перечисленных пути документации/конфигурации, сохраняя подкаталоги `configs/` и `docs/`.
 
-- [ ] **Step 4: Create archives and checksums**
+- [ ] **Шаг 4: создать архивы и контрольные суммы**
 
-Create deterministic gzip tar archives from the staging parent so each archive has exactly one top-level directory. Use stable file ordering and normalized metadata where supported. Write `dist/checksums.txt` from the two archive paths in lexical order, with filenames relative to `dist/`.
+Создать детерминированные архивы tar с gzip из родительского каталога подготовки, чтобы каждый архив содержал ровно один каталог верхнего уровня. Использовать стабильный порядок файлов и нормализованные метаданные там, где это поддерживается. Записать `dist/checksums.txt` для двух путей архивов в лексикографическом порядке, с именами файлов относительно `dist/`.
 
-- [ ] **Step 5: Add script-level asset validation**
+- [ ] **Шаг 5: добавить проверку файлов в скрипт**
 
-Validate the exact two archive filenames, archive member paths, executable permission, absence of `..` or absolute paths, SHA-256 verification, and ELF architecture (`x86-64` for `amd64`, `ARM aarch64` for `arm64`) using available host tools. Run the target binary's `components` command only when its architecture matches the current runner; otherwise report that cross-compiled inspection was used.
+Проверить точные имена двух архивов, пути внутри архивов, право исполнения, отсутствие `..` и абсолютных путей, контрольные суммы SHA-256 и архитектуру ELF (`x86-64` для `amd64`, `ARM aarch64` для `arm64`) доступными инструментами хоста. Выполнять команду `components` целевого бинарного файла только при совпадении его архитектуры с текущей средой выполнения; иначе сообщить о проверке кросс-компилированного файла без запуска.
 
-- [ ] **Step 6: Run the local packaging contract**
+- [ ] **Шаг 6: проверить контракт локальной упаковки**
 
-Run:
+Выполнить:
 
 ```bash
 make release-artifacts VERSION=v1.2.3
@@ -76,86 +78,86 @@ tar -tzf dist/otelcol-zabbix_1.2.3_linux_amd64.tar.gz
 tar -tzf dist/otelcol-zabbix_1.2.3_linux_arm64.tar.gz
 ```
 
-Expected: the target exits successfully, checksums report `OK`, and each archive contains only its documented top-level directory and five required files.
+Ожидается: цель завершается успешно, проверка контрольных сумм сообщает `OK`, а каждый архив содержит только документированный каталог верхнего уровня и пять обязательных файлов.
 
-- [ ] **Step 7: Commit the packaging unit**
+- [ ] **Шаг 7: закоммитить упаковку**
 
 ```bash
 git add Makefile scripts/package-release.sh
 git commit -m "build: add release artifact packaging"
 ```
 
-### Task 2: Document downloading and installing a release
+### Задача 2: документировать скачивание и установку релиза
 
-**Files:**
-- Modify: `README.md`
-- Modify: `docs/deployment.md`
+**Файлы:**
+- Изменить: `README.md`
+- Изменить: `docs/deployment.md`
 
-**Interfaces:**
-- Consumes: The artifact names and archive layout produced by Task 1.
-- Produces: Copy-pasteable public download, checksum, extraction, installation, configuration, and startup instructions.
+**Интерфейсы:**
+- Принимает: имена файлов и структуру архивов, созданные в задаче 1.
+- Предоставляет: готовые к копированию инструкции публичного скачивания, проверки контрольных сумм, распаковки, установки, настройки и запуска.
 
-- [ ] **Step 1: Add the README release quick start**
+- [ ] **Шаг 1: добавить в README быстрый старт для релиза**
 
-Add a section before the Go-based local build instructions. Use the repository's Releases page link and the URL pattern `https://github.com/wieso/zabbixreceiver/releases/download/vX.Y.Z/otelcol-zabbix_X.Y.Z_linux_ARCH.tar.gz`. Show architecture selection, `curl -fL`, checksum verification against `checksums.txt`, extraction, and the runtime command with the three required environment variables.
+Добавить раздел перед инструкциями локальной сборки с Go. Использовать ссылку на страницу Releases репозитория и шаблон URL `https://github.com/wieso/zabbixreceiver/releases/download/vX.Y.Z/otelcol-zabbix_X.Y.Z_linux_ARCH.tar.gz`. Показать выбор архитектуры, `curl -fL`, проверку контрольных сумм по `checksums.txt`, распаковку и команду запуска с тремя обязательными переменными окружения.
 
-- [ ] **Step 2: Add the deployment guide prebuilt-binary section**
+- [ ] **Шаг 2: добавить в руководство по развёртыванию раздел готовых бинарных файлов**
 
-Document Linux prerequisites, installation under `/usr/local/bin/otelcol-zabbix`, copying `configs/otelcol.yaml`, environment-variable precedence, health endpoint verification, and the link to the existing systemd procedure. Explicitly call the token value a placeholder and recommend HTTPS and secret injection for production.
+Документировать требования к Linux, установку в `/usr/local/bin/otelcol-zabbix`, копирование `configs/otelcol.yaml`, приоритет переменных окружения, проверку адреса состояния и ссылку на существующую процедуру systemd. Явно назвать значение токена заглушкой и рекомендовать HTTPS и передачу секретов при запуске для промышленной эксплуатации.
 
-- [ ] **Step 3: Check documentation commands and links**
+- [ ] **Шаг 3: проверить команды и ссылки документации**
 
-Run Markdown link/path checks available in the repository and inspect every command for matching archive names, architecture placeholders, and the actual configuration path. Ensure no command asks users to install Go for the release path.
+Выполнить доступные в репозитории проверки ссылок/путей Markdown и проверить в каждой команде соответствие имён архивов, заглушек архитектуры и фактического пути конфигурации. Убедиться, что ни одна команда установки релиза не требует от пользователя установки Go.
 
-- [ ] **Step 4: Commit documentation**
+- [ ] **Шаг 4: закоммитить документацию**
 
 ```bash
 git add README.md docs/deployment.md
 git commit -m "docs: explain installing release binaries"
 ```
 
-### Task 3: Add the tag-triggered GitHub Release workflow
+### Задача 3: добавить процесс GitHub Release, запускаемый по тегу
 
-**Files:**
-- Create: `.github/workflows/release.yml`
+**Файлы:**
+- Создать: `.github/workflows/release.yml`
 
-**Interfaces:**
-- Consumes: Task 1's `make release-artifacts VERSION=...` interface and Task 2's documented artifact contract.
-- Produces: A non-draft GitHub Release containing the two archives and `checksums.txt`.
+**Интерфейсы:**
+- Принимает: интерфейс `make release-artifacts VERSION=...` из задачи 1 и документированный контракт файлов из задачи 2.
+- Создаёт: опубликованный, не черновой GitHub Release с двумя архивами и `checksums.txt`.
 
-- [ ] **Step 1: Define the tag trigger and permissions**
+- [ ] **Шаг 1: определить запуск по тегу и разрешения**
 
-Configure `push.tags` for `v*.*.*`, `ubuntu-latest`, Go `1.25.x`, and job-level `permissions: contents: write`. Do not add a manual workflow input that could publish an untagged or mismatched version.
+Настроить `push.tags` для `v*.*.*`, `ubuntu-latest`, Go `1.25.x` и `permissions: contents: write` на уровне задания. Не добавлять ручной входной параметр процесса, позволяющий публиковать версию без тега или с несовпадающим тегом.
 
-- [ ] **Step 2: Reuse repository verification**
+- [ ] **Шаг 2: повторно использовать проверки репозитория**
 
-Run checkout, setup-go, dependency download, `make fmt` plus `git diff --check` and `git diff --exit-code`, `make test`, `make test-race`, `make vet`, and `make validate-config`. The validation command must use dummy endpoints only and must not print a secret.
+Выполнить checkout, setup-go, загрузку зависимостей, `make fmt` вместе с `git diff --check` и `git diff --exit-code`, `make test`, `make test-race`, `make vet` и `make validate-config`. Команда валидации должна использовать только фиктивные адреса сервисов и не выводить секреты.
 
-- [ ] **Step 3: Build and validate release assets**
+- [ ] **Шаг 3: собрать и проверить файлы релиза**
 
-Derive the version from the tag or dispatch input, run `make release-artifacts VERSION="$VERSION"`, run `sha256sum -c dist/checksums.txt`, and list the output directory. Fail if the expected three files are not the only files in `dist/`.
+Получить версию из тега или входного параметра ручного запуска, выполнить `make release-artifacts VERSION="$VERSION"`, затем `sha256sum -c dist/checksums.txt` и вывести содержимое выходного каталога. Завершиться с ошибкой, если в `dist/` есть что-либо кроме трёх ожидаемых файлов.
 
-- [ ] **Step 4: Publish the release**
+- [ ] **Шаг 4: опубликовать релиз**
 
-Use `softprops/action-gh-release@v2` with `tag_name`, `name`, generated release notes, and the exact three asset paths. Do not enable replacement or deletion behavior; an existing release/assets conflict must fail visibly.
+Использовать `softprops/action-gh-release@v2` с `tag_name`, `name`, сгенерированными примечаниями к релизу и тремя точными путями файлов. Не включать замену или удаление; конфликт с существующим релизом/файлами должен приводить к явному сбою.
 
-- [ ] **Step 5: Validate workflow syntax and policy**
+- [ ] **Шаг 5: проверить синтаксис и правила процесса**
 
-Parse the YAML with an available YAML parser, inspect the workflow for `contents: write`, tag filters, exact asset paths, and absence of secret values. If `actionlint` is available, run it and record the result.
+Разобрать YAML доступным парсером YAML, проверить в процессе `contents: write`, фильтры тегов, точные пути файлов и отсутствие значений секретов. Если доступен `actionlint`, запустить его и записать результат.
 
-- [ ] **Step 6: Commit the workflow**
+- [ ] **Шаг 6: закоммитить процесс выпуска**
 
 ```bash
 git add .github/workflows/release.yml
 git commit -m "ci: publish tagged collector binaries"
 ```
 
-### Task 4: Run the complete verification suite
+### Задача 4: выполнить полный набор проверок
 
-**Files:**
-- Test: repository-wide commands and generated `dist/` artifacts only; do not commit generated `dist/` output.
+**Файлы:**
+- Проверить: только команды для всего репозитория и сгенерированные файлы `dist/`; не коммитить содержимое `dist/`.
 
-- [ ] **Step 1: Run Go and configuration verification**
+- [ ] **Шаг 1: выполнить проверки Go и конфигурации**
 
 ```bash
 make fmt
@@ -166,7 +168,7 @@ make vet
 make validate-config
 ```
 
-- [ ] **Step 2: Run packaging and existing deployment verification**
+- [ ] **Шаг 2: проверить упаковку и существующие способы развёртывания**
 
 ```bash
 make release-artifacts VERSION=v1.2.3
@@ -175,9 +177,9 @@ make compose-config
 go test ./internal/packaging -count=1
 ```
 
-Run Docker, Kubernetes, systemd, and demo checks only when their required host tools/daemon are available, following `docs/deployment.md`.
+Выполнять проверки Docker, Kubernetes, systemd и демонстрации только при наличии требуемых инструментов/демона хоста, следуя `docs/deployment.md`.
 
-- [ ] **Step 3: Inspect the final change set**
+- [ ] **Шаг 3: проверить итоговый набор изменений**
 
 ```bash
 git status --short
@@ -185,8 +187,8 @@ git diff HEAD~3 --check
 git diff HEAD~3 --stat
 ```
 
-Confirm `.idea/` and generated `dist/` remain untracked/ignored as appropriate, release archives contain no credentials, and all acceptance criteria in the spec are covered.
+Убедиться, что `.idea/` и сгенерированный `dist/` остаются неотслеживаемыми/игнорируемыми по необходимости, архивы релиза не содержат учётных данных, а все критерии приёмки спецификации покрыты.
 
-- [ ] **Step 4: Report evidence and integration options**
+- [ ] **Шаг 4: представить подтверждения и варианты интеграции**
 
-Report exact command results, note any unavailable host-only checks, and present the resulting commits for review. Do not claim the GitHub Release exists until a real tag workflow has run on GitHub.
+Сообщить точные результаты команд, отметить недоступные проверки, требующие хоста, и представить полученные коммиты на проверку. Не утверждать, что GitHub Release существует, пока на GitHub не выполнен реальный процесс по тегу.

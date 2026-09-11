@@ -42,21 +42,28 @@ func createMetricsReceiver(
 		return nil, fmt.Errorf("validate Zabbix receiver config: %w", err)
 	}
 
-	httpClient := &http.Client{Timeout: resolved.Zabbix.Timeout}
-	api, err := zabbix.NewClient(zabbix.ClientConfig{
-		URL:     resolved.Zabbix.URL,
-		Token:   string(resolved.Zabbix.Token),
-		Timeout: resolved.Zabbix.Timeout,
-	}, httpClient)
-	if err != nil {
-		return nil, fmt.Errorf("create Zabbix client: %w", err)
-	}
+	var api zabbix.API
+	if resolved.Mode == "api" || resolved.Streaming.EnrichWithAPI {
+		httpClient := &http.Client{Timeout: resolved.Zabbix.Timeout}
+		client, err := zabbix.NewClient(zabbix.ClientConfig{
+			URL:               resolved.Zabbix.URL,
+			Token:             string(resolved.Zabbix.Token),
+			Timeout:           resolved.Zabbix.Timeout,
+			MetadataEnabled:   resolved.Metadata.Enabled,
+			InheritedHostTags: resolved.Metadata.InheritedHostTags,
+			InventoryFields:   resolved.Metadata.InventoryFields,
+		}, httpClient)
+		if err != nil {
+			return nil, fmt.Errorf("create Zabbix client: %w", err)
+		}
 
+		api = client
+	}
 	meterProvider := settings.MeterProvider
 	if meterProvider == nil {
 		meterProvider = noop.NewMeterProvider()
 	}
-	telemetry, err := newTelemetry(meterProvider.Meter(componentType.String()))
+	telemetry, err := newTelemetry(meterProvider.Meter("github.com/wieso/zabbixreceiver/receiver/zabbixreceiver"))
 	if err != nil {
 		return nil, fmt.Errorf("create Zabbix receiver telemetry: %w", err)
 	}

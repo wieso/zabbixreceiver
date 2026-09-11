@@ -1,51 +1,53 @@
-# OCB Module Publication Design
+# Проектирование публикации модуля OCB
 
-Date: 2026-08-05
+> Исторический материал. [Статус и указатель](../README.md) · [Актуальная документация](../../README.md). Не используйте как инструкцию для текущей версии.
 
-## Objective
+Дата: 2026-08-05
 
-Publish the Zabbix receiver at `https://github.com/wieso/zabbixreceiver` as a
-versioned, independently consumable OpenTelemetry Collector Builder component.
-The remote `main` branch must contain exactly one root commit and no prior
-project history.
+## Цель
 
-The supported integration target is OpenTelemetry Collector and Collector
-Contrib `v0.154.0`, including the stable Collector modules at `v1.60.0`. The
-first receiver module release is `v0.1.0`.
+Опубликовать приёмник Zabbix по адресу `https://github.com/wieso/zabbixreceiver`
+как версионируемый, независимо подключаемый компонент OpenTelemetry Collector
+Builder. Удалённая ветка `main` должна содержать ровно один корневой коммит без
+предыдущей истории проекта.
 
-## Public Module Contract
+Поддерживаемая целевая версия интеграции — OpenTelemetry Collector и Collector
+Contrib `v0.154.0`, включая стабильные модули Collector `v1.60.0`. Первый выпуск
+модуля приёмника — `v0.1.0`.
 
-The receiver is an independent nested Go module at
-`receiver/zabbixreceiver` with this module path:
+## Публичный контракт модуля
+
+Приёмник представляет собой независимый вложенный модуль Go в
+`receiver/zabbixreceiver` со следующим путём модуля:
 
 ```text
 github.com/wieso/zabbixreceiver/receiver/zabbixreceiver
 ```
 
-This follows the component-level module structure used by Collector Contrib.
-The module is published with the subdirectory tag:
+Это соответствует структуре модулей на уровне компонентов, принятой в Collector
+Contrib. Модуль публикуется с тегом подкаталога:
 
 ```text
 receiver/zabbixreceiver/v0.1.0
 ```
 
-Users add it to an OCB manifest with no explicit `import` or local `path`:
+Пользователи добавляют его в манифест OCB без явного `import` или локального `path`:
 
 ```yaml
 receivers:
   - gomod: github.com/wieso/zabbixreceiver/receiver/zabbixreceiver v0.1.0
 ```
 
-The module exports the existing `zabbixreceiver.NewFactory` function, and the
-Collector component type remains `zabbix`. The receiver YAML schema, defaults,
-environment overrides, scheduling, metric mapping, authentication, and runtime
-failure behavior do not change.
+Модуль экспортирует существующую функцию `zabbixreceiver.NewFactory`, а тип
+компонента Collector остаётся `zabbix`. Схема YAML приёмника, значения по умолчанию,
+переопределения окружением, планирование, преобразование метрик, аутентификация
+и поведение при сбоях во время работы не меняются.
 
-## Repository and Module Layout
+## Структура репозитория и модулей
 
-The existing receiver source remains in `receiver/zabbixreceiver`. Its private
-implementation packages move under the nested module so the published module
-has no dependency on the repository's root module:
+Существующий исходный код приёмника остаётся в `receiver/zabbixreceiver`.
+Его внутренние пакеты реализации перемещаются во вложенный модуль, чтобы
+публикуемый модуль не зависел от корневого модуля репозитория:
 
 ```text
 receiver/zabbixreceiver/
@@ -62,10 +64,10 @@ receiver/zabbixreceiver/
     zabbix/
 ```
 
-The root module remains responsible for the ready-made Collector distribution,
-Docker image, Compose demo, deployment assets, and repository-wide packaging
-tests. Its module path changes to `github.com/wieso/zabbixreceiver`, and it
-requires the nested receiver module with a repository-local `replace`:
+Корневой модуль по-прежнему отвечает за готовый дистрибутив Collector, образ
+Docker, демонстрацию Compose, файлы развёртывания и проверки упаковки всего
+репозитория. Его путь модуля меняется на `github.com/wieso/zabbixreceiver`,
+а вложенный модуль приёмника подключается с локальным для репозитория `replace`:
 
 ```go
 require github.com/wieso/zabbixreceiver/receiver/zabbixreceiver v0.1.0
@@ -73,95 +75,98 @@ require github.com/wieso/zabbixreceiver/receiver/zabbixreceiver v0.1.0
 replace github.com/wieso/zabbixreceiver/receiver/zabbixreceiver => ./receiver/zabbixreceiver
 ```
 
-The root distribution imports the receiver through its published module path.
-No dependency points back from the receiver module to the root module, so the
-two modules do not form a cycle.
+Корневой дистрибутив импортирует приёмник по опубликованному пути модуля.
+Обратной зависимости от модуля приёмника к корневому модулю нет, поэтому
+эти два модуля не образуют цикл.
 
-## Versions and Licensing
+## Версии и лицензирование
 
-The nested module uses Go 1.25 or newer, Collector `v0.154.0` modules, stable
-Collector `v1.60.0` modules, and the corresponding OpenTelemetry Go dependency
-versions selected by `go mod tidy`. The root distribution is upgraded to the
-same Collector/Contrib compatibility line.
+Вложенный модуль использует Go 1.25 или новее, модули Collector `v0.154.0`,
+стабильные модули Collector `v1.60.0` и соответствующие версии зависимостей
+OpenTelemetry Go, выбранные `go mod tidy`. Корневой дистрибутив обновляется
+до той же линии совместимости Collector/Contrib.
 
-The repository is published under Apache License 2.0 with a root `LICENSE`
-file. Documentation identifies `v0.154.0` as the tested Collector compatibility
-line rather than promising compatibility with every older or newer release.
+Репозиторий публикуется под лицензией Apache License 2.0 с файлом `LICENSE`
+в корне. Документация указывает `v0.154.0` как проверенную линию совместимости
+Collector, не обещая совместимость со всеми более старыми или новыми выпусками.
 
-## Documentation and Examples
+## Документация и примеры
 
-The root README and a component-focused `receiver/zabbixreceiver/README.md`
-document:
+Корневой README и посвящённый компоненту `receiver/zabbixreceiver/README.md`
+описывают:
 
-- the exact OCB `gomod` entry;
-- the required Go and Collector versions;
-- a minimal `zabbix` receiver configuration;
-- the distinction between build-time OCB configuration and runtime Collector
-  configuration;
-- the subdirectory release-tag convention;
-- how to run the repository's verification targets.
+- точную запись OCB `gomod`;
+- необходимые версии Go и Collector;
+- минимальную конфигурацию приёмника `zabbix`;
+- различие между конфигурацией OCB для сборки и конфигурацией Collector
+  для выполнения;
+- соглашение о тегах выпуска для подкаталога;
+- запуск целей проверки репозитория.
 
-`examples/ocb/builder-config.yaml` is a copy-ready manifest that resolves the
-published `v0.1.0` module. `examples/ocb/otelcol.yaml` is a minimal runtime
-metrics pipeline using the `zabbix` receiver and a standard debug exporter.
-The example contains only non-secret placeholders and does not contact Zabbix
-during configuration validation.
+`examples/ocb/builder-config.yaml` — готовый к копированию манифест,
+подключающий опубликованный модуль `v0.1.0`. `examples/ocb/otelcol.yaml` —
+минимальный рабочий конвейер метрик с приёмником `zabbix` и стандартным
+отладочным экспортёром. Пример содержит только несекретные заполнители
+и не обращается к Zabbix при проверке конфигурации.
 
-A separate repository-local OCB fixture adds
-`path: ./receiver/zabbixreceiver`. It exists only to verify the unpublished
-working tree and is clearly separated from the copy-ready published example.
+Отдельная локальная тестовая конфигурация OCB добавляет
+`path: ./receiver/zabbixreceiver`. Она предназначена только для проверки
+неопубликованного рабочего дерева и явно отделена от готового к копированию
+примера для опубликованного модуля.
 
-## Verification Contract
+## Контракт проверки
 
-Verification covers the module boundary as well as receiver behavior:
+Проверка охватывает границу модулей и поведение приёмника:
 
-1. Run formatting, tests, race tests, and `go vet` for the nested receiver
-   module.
-2. Run formatting, tests, race tests, `go vet`, build, and existing packaging
-   checks for the root module.
-3. Confirm that `go mod tidy` leaves both `go.mod` and `go.sum` files unchanged.
-4. Run OpenTelemetry Collector Builder `v0.154.0` against the local OCB fixture.
-5. Run the generated binary's `components` command and require the `zabbix`
-   receiver to be present.
-6. Run the generated binary's `validate` command against the minimal runtime
-   configuration with placeholder credentials. Validation must succeed without
-   making a Zabbix request.
-7. After publication, repeat the Builder build in a clean temporary environment
-   using `examples/ocb/builder-config.yaml`, with no `replace`, local `path`, or
-   pre-populated module cache providing the receiver.
+1. Выполнить форматирование, тесты, тесты с детектором гонок и `go vet`
+   для вложенного модуля приёмника.
+2. Выполнить форматирование, тесты, тесты с детектором гонок, `go vet`, сборку
+   и существующие проверки упаковки для корневого модуля.
+3. Подтвердить, что `go mod tidy` не меняет файлы `go.mod` и `go.sum` обоих модулей.
+4. Запустить OpenTelemetry Collector Builder `v0.154.0` с локальной тестовой
+   конфигурацией OCB.
+5. Выполнить команду `components` созданного бинарного файла и убедиться
+   в наличии приёмника `zabbix`.
+6. Выполнить команду `validate` созданного бинарного файла с минимальной рабочей
+   конфигурацией и заполнителями учётных данных. Проверка должна завершиться
+   успешно без запросов к Zabbix.
+7. После публикации повторить сборку Builder в чистом временном окружении
+   с `examples/ocb/builder-config.yaml`, без `replace`, локального `path`
+   или заранее заполненного кеша модулей, предоставляющего приёмник.
 
-Any failed test, version conflict, missing component, invalid configuration, or
-remote module resolution failure blocks publication or completion.
+Любой провал теста, конфликт версий, отсутствие компонента, некорректная
+конфигурация или сбой разрешения удалённого модуля блокирует публикацию
+или завершение работы.
 
-## Publication Procedure
+## Порядок публикации
 
-Immediately before publication, query the remote again. If it has gained any
-branch or tag, stop without overwriting it.
+Непосредственно перед публикацией снова проверить удалённый репозиторий.
+Если в нём появилась любая ветка или тег, остановиться, ничего не перезаписывая.
 
-Local implementation commits may be used while preparing and reviewing the
-project. Before publication, preserve the old local history in an unpushed
-backup branch, create a new orphan `main` from the verified final tree, and
-make exactly one root commit with this subject:
+При подготовке и проверке проекта можно использовать локальные коммиты реализации.
+Перед публикацией сохранить старую локальную историю в неотправленной резервной
+ветке, создать новую независимую ветку `main` из проверенного итогового дерева
+и сделать ровно один корневой коммит со следующим заголовком:
 
 ```text
 feat: publish Zabbix OpenTelemetry receiver
 ```
 
-Push only `main` and `receiver/zabbixreceiver/v0.1.0`. Do not push the backup
-branch, previous branches, previous tags, or all refs. The module tag points to
-the single root commit and does not introduce another commit.
+Отправить только `main` и `receiver/zabbixreceiver/v0.1.0`. Не отправлять резервную
+ветку, предыдущие ветки, предыдущие теги или все ссылки Git. Тег модуля указывает
+на единственный корневой коммит и не создаёт ещё один коммит.
 
-After the push, use a clean clone to require all of the following:
+После отправки в чистом клоне проверить выполнение всех следующих условий:
 
-- `git rev-list --count HEAD` returns `1`;
-- `HEAD` has no parent;
-- `receiver/zabbixreceiver/v0.1.0` resolves to `HEAD`;
-- the remote-only OCB verification succeeds.
+- `git rev-list --count HEAD` возвращает `1`;
+- у `HEAD` нет родителя;
+- `receiver/zabbixreceiver/v0.1.0` разрешается в `HEAD`;
+- проверка OCB, использующая только удалённый модуль, завершается успешно.
 
-## Non-Goals
+## Что не входит в цели
 
-- Contributing the receiver to the upstream Collector Contrib repository.
-- Publishing prebuilt release binaries or container images.
-- Changing receiver configuration or collection behavior.
-- Claiming compatibility beyond Collector/Contrib `v0.154.0`.
-- Publishing the repository's existing local commit history.
+- Добавление приёмника в основной репозиторий Collector Contrib.
+- Публикация готовых бинарных файлов выпусков или контейнерных образов.
+- Изменение конфигурации приёмника или поведения сбора.
+- Заявление о совместимости за пределами Collector/Contrib `v0.154.0`.
+- Публикация существующей локальной истории коммитов репозитория.

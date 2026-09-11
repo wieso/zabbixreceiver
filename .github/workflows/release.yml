@@ -16,10 +16,10 @@ jobs:
       - name: Check out tagged commit
         uses: actions/checkout@v4
 
-      - name: Set up Go 1.25
+      - name: Set up Go 1.26.8
         uses: actions/setup-go@v6
         with:
-          go-version: '1.25.x'
+          go-version: '1.26.8'
           cache: true
 
       - name: Download dependencies
@@ -39,6 +39,9 @@ jobs:
 
       - name: Vet
         run: make vet
+
+      - name: Scan both modules for reachable vulnerabilities
+        run: make vulncheck
 
       - name: Validate Collector configuration
         run: make validate-config

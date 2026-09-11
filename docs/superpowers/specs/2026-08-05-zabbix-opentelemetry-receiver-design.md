@@ -1,16 +1,18 @@
-# Zabbix OpenTelemetry Receiver Design
+# Проектирование приёмника Zabbix для OpenTelemetry
 
-Date: 2026-08-05
+> Исторический материал. [Статус и указатель](../README.md) · [Актуальная документация](../../README.md). Не используйте как инструкцию для текущей версии.
 
-## Objective
+Дата: 2026-08-05
 
-Build a native OpenTelemetry Collector metrics receiver in Go that polls numeric item values from Zabbix and passes OpenTelemetry metrics to the next component in a Collector pipeline. Provide a custom Collector distribution that can forward those metrics to VictoriaMetrics through the standard Prometheus remote-write exporter.
+## Цель
 
-The component must be deployable as a container, a systemd-managed service on a Linux VM, and a Kubernetes workload. A Docker Compose environment must demonstrate the full data path using a real Zabbix installation and VictoriaMetrics.
+Создать на Go нативный приёмник метрик OpenTelemetry Collector, который опрашивает числовые значения элементов данных Zabbix и передаёт метрики OpenTelemetry следующему компоненту конвейера Collector. Предоставить собственный дистрибутив Collector, способный пересылать эти метрики в VictoriaMetrics через стандартный экспортёр Prometheus remote write.
 
-## Compatibility Boundary
+Компонент должен развёртываться как контейнер, служба под управлением systemd на виртуальной машине Linux и рабочая нагрузка Kubernetes. Окружение Docker Compose должно демонстрировать полный путь данных с настоящими установками Zabbix и VictoriaMetrics.
 
-The receiver supports this public configuration interface:
+## Границы совместимости
+
+Приёмник поддерживает следующий публичный интерфейс конфигурации:
 
 - `schedule.jitter`
 - `schedule.jobs.discover`
@@ -22,66 +24,66 @@ The receiver supports this public configuration interface:
 - `zabbix.timeout`
 - `zabbix.limits`
 - `zabbix.filters`
-- The documented Zabbix-related environment overrides
+- Документированные переопределения через переменные окружения, связанные с Zabbix
 
-Process-level exporter settings are intentionally excluded because the OpenTelemetry Collector owns them:
+Настройки экспортёра уровня процесса намеренно исключены, поскольку ими управляет OpenTelemetry Collector:
 
 - `base.address`
-- `/metrics` and `/health` exporter endpoints
-- Standalone exporter CLI flags
-- Agent-specific exporter configuration
+- Точки доступа экспортёра `/metrics` и `/health`
+- Флаги командной строки самостоятельного экспортёра
+- Конфигурация экспортёра, специфичная для агента
 
-Collector endpoint, health, telemetry, and command-line behavior remain standard Collector concerns.
+Точки доступа, состояние, телеметрия и поведение командной строки Collector остаются стандартной зоной ответственности Collector.
 
-## Architecture
+## Архитектура
 
-### OpenTelemetry component
+### Компонент OpenTelemetry
 
-`receiver/zabbixreceiver` is the public Collector component. It provides:
+`receiver/zabbixreceiver` — публичный компонент Collector. Он предоставляет:
 
-- `NewFactory()` for registration in a Collector distribution
-- Default configuration matching the documented receiver defaults
-- Configuration decoding and validation
-- Receiver start and shutdown lifecycle
-- Delivery of `pmetric.Metrics` to the configured downstream `consumer.Metrics`
+- `NewFactory()` для регистрации в дистрибутиве Collector
+- Конфигурацию по умолчанию, соответствующую документированным значениям приёмника
+- Декодирование и проверку конфигурации
+- Жизненный цикл запуска и остановки приёмника
+- Доставку `pmetric.Metrics` настроенному следующему потребителю `consumer.Metrics`
 
-### Zabbix client
+### Клиент Zabbix
 
-`receiver/zabbixreceiver/internal/zabbix` implements a typed JSON-RPC client for the Zabbix API. It is responsible for:
+`receiver/zabbixreceiver/internal/zabbix` реализует типизированный клиент JSON-RPC для API Zabbix. Он отвечает за:
 
-- API-token authentication
-- `host.get` and `item.get` calls
-- Request and response encoding
-- Zabbix JSON-RPC error handling
-- Per-request timeouts
-- Chunked value requests
+- Аутентификацию с API-токеном
+- Вызовы `host.get` и `item.get`
+- Кодирование запросов и ответов
+- Обработку ошибок JSON-RPC Zabbix
+- Тайм-ауты отдельных запросов
+- Запросы значений порциями
 
-The receiver targets Zabbix 5.0 or later, subject to API-token availability in the deployed Zabbix version. The configured credential is always treated as sensitive and must not be logged.
+Приёмник рассчитан на Zabbix 5.0 или новее при условии доступности API-токенов в развёрнутой версии Zabbix. Настроенные учётные данные всегда считаются конфиденциальными и не должны записываться в журнал.
 
-### Discovery and snapshot management
+### Обнаружение и управление снимками
 
-`receiver/zabbixreceiver/internal/discovery` obtains hosts and numeric items, applies filters and limits, then creates an immutable metadata snapshot. The live snapshot is replaced atomically only after a complete successful discovery. A failed refresh leaves the previous usable snapshot in place.
+`receiver/zabbixreceiver/internal/discovery` получает узлы и числовые элементы данных, применяет фильтры и ограничения, затем создаёт неизменяемый снимок метаданных. Текущий снимок заменяется атомарно только после полностью успешного обнаружения. При неудачном обновлении сохраняется предыдущий пригодный снимок.
 
-### Metric conversion
+### Преобразование метрик
 
-`receiver/zabbixreceiver/internal/metrics` converts values into OpenTelemetry gauge points. It owns metric-name normalization, numeric parsing, attributes, descriptions, and timestamps.
+`receiver/zabbixreceiver/internal/metrics` преобразует значения в точки метрик типа gauge OpenTelemetry. Он отвечает за нормализацию имён метрик, разбор чисел, атрибуты, описания и временные метки.
 
-### Custom Collector distribution
+### Собственный дистрибутив Collector
 
-`cmd/otelcol-zabbix` builds a Collector binary containing:
+`cmd/otelcol-zabbix` собирает бинарный файл Collector, содержащий:
 
-- The Zabbix receiver
-- Prometheus remote-write exporter
-- Batch processor
-- Memory-limiter processor
-- Health-check extension
-- Standard Collector telemetry support
+- Приёмник Zabbix
+- Экспортёр Prometheus remote write
+- Процессор пакетной обработки
+- Процессор ограничения памяти
+- Расширение проверки состояния
+- Стандартную поддержку телеметрии Collector
 
-The receiver has no direct dependency on VictoriaMetrics. VictoriaMetrics is a deployment-level destination selected with the standard Collector exporter.
+Приёмник не имеет прямой зависимости от VictoriaMetrics. VictoriaMetrics — назначение уровня развёртывания, выбираемое стандартным экспортёром Collector.
 
-## Configuration
+## Конфигурация
 
-The receiver is configured as follows:
+Приёмник настраивается следующим образом:
 
 ```yaml
 receivers:
@@ -118,9 +120,9 @@ receivers:
         item_key_exclude_regex: ""
 ```
 
-The receiver defaults are:
+Значения приёмника по умолчанию:
 
-| Setting | Default |
+| Настройка | По умолчанию |
 | --- | --- |
 | `schedule.jitter` | `5s` |
 | `discover.enabled` | `true` |
@@ -136,9 +138,9 @@ The receiver defaults are:
 | `max_metrics_per_host` | `1000` |
 | `items_per_request` | `1000` |
 
-The receiver honors these documented environment overrides when they are present:
+Приёмник учитывает следующие документированные переопределения окружением, если они заданы:
 
-| Environment variable | Receiver setting |
+| Переменная окружения | Настройка приёмника |
 | --- | --- |
 | `ZABBIX_URL` | `zabbix.url` |
 | `ZABBIX_TOKEN` | `zabbix.token` |
@@ -146,205 +148,205 @@ The receiver honors these documented environment overrides when they are present
 | `MAX_METRICS_PER_HOST` | `zabbix.limits.max_metrics_per_host` |
 | `ZABBIX_ITEMS_PER_REQUEST` | `zabbix.limits.items_per_request` |
 
-An explicit environment override takes precedence over the decoded YAML value, matching the public receiver interface. Standard Collector environment interpolation remains supported as well. Public configuration validation clones the decoded configuration, resolves these overrides, and validates the clone without mutating its caller; the factory independently resolves its own clone and invokes the pure resolved-config validator before construction. Consequently, environment-only URL/token values and valid environment replacements for invalid decoded values participate in Collector recursive validation as well as factory construction.
+Явное переопределение окружением имеет приоритет над декодированным значением YAML в соответствии с публичным интерфейсом приёмника. Стандартная подстановка переменных окружения Collector также поддерживается. Публичная проверка конфигурации копирует декодированную конфигурацию, применяет эти переопределения и проверяет копию, не изменяя объект вызывающей стороны; фабрика независимо обрабатывает собственную копию и перед созданием вызывает чистую функцию проверки разрешённой конфигурации. Поэтому URL/токен, заданные только окружением, и корректные значения окружения, заменяющие некорректные декодированные значения, учитываются как при рекурсивной проверке Collector, так и при создании фабрикой.
 
-Validation rejects:
+Проверка отклоняет:
 
-- A missing or invalid Zabbix URL
-- An empty API token after environment overrides
-- A non-positive Zabbix per-request timeout after environment overrides
-- Non-positive enabled-job intervals or timeouts
-- Negative jitter
-- Non-positive request or per-host limits
-- Invalid regular expressions
-- A metric prefix that cannot produce valid Prometheus-compatible metric names
-- Configurations with both jobs disabled
+- Отсутствующий или некорректный URL Zabbix
+- Пустой API-токен после переопределений окружением
+- Неположительный тайм-аут отдельного запроса Zabbix после переопределений окружением
+- Неположительные интервалы или тайм-ауты включённых заданий
+- Отрицательную случайную задержку
+- Неположительные ограничения на запрос или узел
+- Некорректные регулярные выражения
+- Префикс метрик, не позволяющий получить корректные имена, совместимые с Prometheus
+- Конфигурации с обоими отключёнными заданиями
 
-## Runtime Data Flow
+## Поток данных во время работы
 
-### Discover job
+### Задание discover
 
-1. Apply a random delay in the range from zero through `schedule.jitter`.
-2. Call `host.get` to obtain available host IDs and names.
-3. Call `item.get` for numeric item types only: float (`value_type=0`) and unsigned integer (`value_type=3`).
-4. Apply non-empty host and item-key include expressions.
-5. Apply host and item-key exclude expressions after the include expressions.
-6. Enforce `max_metrics_per_host` deterministically in the item order returned by Zabbix.
-7. Build and atomically publish a new immutable metadata snapshot.
+1. Применить случайную задержку от нуля до `schedule.jitter` включительно.
+2. Вызвать `host.get` для получения идентификаторов и имён доступных узлов.
+3. Вызвать `item.get` только для числовых типов элементов данных: числа с плавающей точкой (`value_type=0`) и беззнаковые целые (`value_type=3`).
+4. Применить непустые выражения включения для узлов и ключей элементов данных.
+5. После выражений включения применить выражения исключения для узлов и ключей элементов данных.
+6. Детерминированно применить `max_metrics_per_host` в порядке элементов, возвращённом Zabbix.
+7. Создать и атомарно опубликовать новый неизменяемый снимок метаданных.
 
-The first discover invocation occurs at startup when `run_on_start` is true. Otherwise, it occurs after one interval. The job never overlaps itself.
+Первый вызов discover происходит при запуске, если `run_on_start` равен true. Иначе он происходит через один интервал. Запуски этого задания никогда не перекрываются.
 
-### Values job
+### Задание values
 
-1. Apply bounded positive jitter.
-2. Read one stable discovery snapshot.
-3. Return successfully without emitting data if no snapshot is available or the snapshot is empty.
-4. Split item IDs into chunks no larger than `items_per_request`.
-5. Call `item.get` for each chunk to obtain `lastvalue` and `lastclock`.
-6. Ignore missing values and report malformed numeric values through receiver self-telemetry without failing the entire batch.
-7. Convert valid values to OpenTelemetry metrics.
-8. Deliver one metrics batch to the next consumer.
+1. Применить ограниченную положительную случайную задержку.
+2. Прочитать один стабильный снимок обнаружения.
+3. Успешно завершиться без выдачи данных, если снимок недоступен или пуст.
+4. Разделить идентификаторы элементов данных на порции размером не более `items_per_request`.
+5. Вызвать `item.get` для каждой порции, чтобы получить `lastvalue` и `lastclock`.
+6. Игнорировать отсутствующие значения и сообщать о некорректных числовых значениях через собственную телеметрию приёмника, не прерывая весь пакет.
+7. Преобразовать корректные значения в метрики OpenTelemetry.
+8. Передать один пакет метрик следующему потребителю.
 
-The first values invocation follows `run_on_start`; it may safely run before discovery. The job never overlaps itself.
+Первый вызов values определяется `run_on_start`; его безопасно выполнять до обнаружения. Запуски этого задания никогда не перекрываются.
 
-Each job invocation uses the job timeout as its outer deadline. Individual Zabbix calls are additionally capped by `zabbix.timeout`; the shorter active deadline wins.
+Каждый запуск задания использует тайм-аут задания как внешний предельный срок. Отдельные вызовы Zabbix дополнительно ограничены `zabbix.timeout`; действует более короткий из активных сроков.
 
-## Metric Model
+## Модель метрик
 
-Each Zabbix item becomes an OpenTelemetry gauge data point with a double value. Unsigned integer values are represented as doubles because Prometheus remote write uses floating-point samples.
+Каждый элемент данных Zabbix становится точкой данных типа gauge OpenTelemetry со значением double. Беззнаковые целые представлены как double, поскольку Prometheus remote write использует измерения с плавающей точкой.
 
-Metric names follow `{prefix}{sanitized_item_key}`:
+Имена метрик формируются по шаблону `{prefix}{sanitized_item_key}`:
 
-- Characters outside the Prometheus metric-name character set are replaced with `_`.
-- Repeated invalid characters may produce repeated underscores; this preserves direct replacement semantics.
-- Trailing underscores are removed.
-- An invalid leading character is replaced or prefixed with `_` as required.
+- Символы вне допустимого набора символов имени метрики Prometheus заменяются на `_`.
+- Повторяющиеся недопустимые символы могут давать повторяющиеся подчёркивания; это сохраняет семантику прямой замены.
+- Подчёркивания в конце удаляются.
+- Недопустимый начальный символ при необходимости заменяется либо дополняется префиксом `_`.
 
-Each point includes these attributes:
+Каждая точка содержит следующие атрибуты:
 
-| Attribute | Source |
+| Атрибут | Источник |
 | --- | --- |
-| `host` | Zabbix host name |
-| `hostid` | Zabbix host ID |
-| `item_key` | Zabbix item key |
-| `itemid` | Zabbix item ID |
-| Configured constant labels | `prom.const_labels` |
+| `host` | Имя узла Zabbix |
+| `hostid` | Идентификатор узла Zabbix |
+| `item_key` | Ключ элемента данных Zabbix |
+| `itemid` | Идентификатор элемента данных Zabbix |
+| Настроенные постоянные метки | `prom.const_labels` |
 
-Automatic attributes take precedence if a constant label uses one of the four reserved names. This prevents configuration from changing the identity metadata defined by the compatibility contract.
+Автоматические атрибуты имеют приоритет, если постоянная метка использует одно из четырёх зарезервированных имён. Это не позволяет конфигурации изменять идентифицирующие метаданные, определённые контрактом совместимости.
 
-The point timestamp is parsed from Zabbix `lastclock`. The Zabbix item display name is used as the metric description. Items that sanitize to the same metric name remain distinguishable by `item_key` and `itemid` attributes.
+Временная метка точки разбирается из `lastclock` Zabbix. Отображаемое имя элемента данных Zabbix используется как описание метрики. Элементы, имена которых после нормализации совпадают, остаются различимыми по атрибутам `item_key` и `itemid`.
 
-## Concurrency and Lifecycle
+## Параллелизм и жизненный цикл
 
-- Receiver startup validates configuration, constructs the client, and starts enabled job loops.
-- Discovery snapshots use atomic replacement, allowing values collection to proceed without holding a lock across network calls.
-- Each job is serialized independently.
-- Collector cancellation propagates into scheduler waits and Zabbix requests.
-- Shutdown cancels both loops and waits for them to finish within the Collector-provided context.
-- No goroutines remain after successful shutdown.
+- При запуске приёмник проверяет конфигурацию, создаёт клиент и запускает циклы включённых заданий.
+- Снимки обнаружения заменяются атомарно, что позволяет собирать значения без удержания блокировки во время сетевых вызовов.
+- Каждое задание выполняется последовательно независимо от другого.
+- Отмена Collector передаётся ожиданиям планировщика и запросам Zabbix.
+- Остановка отменяет оба цикла и ждёт их завершения в пределах контекста, предоставленного Collector.
+- После успешной остановки не остаётся работающих горутин.
 
-## Error Handling and Observability
+## Обработка ошибок и наблюдаемость
 
-Configuration errors fail Collector startup with field-specific messages.
+Ошибки конфигурации прерывают запуск Collector с сообщениями, указывающими конкретное поле.
 
-Runtime failures are recoverable:
+Сбои во время работы допускают восстановление:
 
-- Discovery errors retain the last good snapshot.
-- A failed value request prevents emission of a partial batch for that cycle, except that individual malformed values are skipped.
-- Downstream consumer errors are logged and counted; the next scheduled collection still runs.
-- Authentication failures are never retried within the same cycle.
-- Network and HTTP errors include safe endpoint and operation context but never credentials or full request bodies.
+- При ошибках обнаружения сохраняется последний корректный снимок.
+- Неудачный запрос значений предотвращает выдачу частичного пакета в текущем цикле, при этом отдельные некорректные значения пропускаются.
+- Ошибки следующего потребителя записываются в журнал и учитываются в счётчиках; следующий запланированный сбор всё равно выполняется.
+- При ошибках аутентификации повторные попытки в том же цикле не выполняются.
+- Сетевые и HTTP-ошибки содержат безопасный контекст точки доступа и операции, но никогда не включают учётные данные или полные тела запросов.
 
-The final human adjudication makes the precise Task 6 list implemented in `telemetry.go`, covered by tests, and published in the configuration documentation authoritative. The authoritative acceptance surface is exactly these ten instruments; the older broad concepts of separate success, host-count, item-count, requested-item, or downstream-failure instruments are not additional requirements:
+Окончательное решение человека определяет точный список из задачи 6, реализованный в `telemetry.go`, покрытый тестами и опубликованный в документации конфигурации, как нормативный. Обязательные критерии приёмки охватывают ровно эти десять инструментов; прежние общие идеи отдельных инструментов для успехов, числа узлов, числа элементов данных, запрошенных элементов или сбоев следующего потребителя не являются дополнительными требованиями:
 
-| Instrument | Semantics |
+| Инструмент | Семантика |
 | --- | --- |
-| `otelcol_receiver_zabbix_discover_attempts` | Counter incremented at the start of every discovery cycle. |
-| `otelcol_receiver_zabbix_discover_errors` | Counter incremented when a discovery cycle returns an error. |
-| `otelcol_receiver_zabbix_discover_duration` | Histogram recording every discovery cycle's duration in seconds, including errors. |
-| `otelcol_receiver_zabbix_values_attempts` | Counter incremented at the start of every values cycle. |
-| `otelcol_receiver_zabbix_values_errors` | Counter incremented when a values cycle returns an error, including a downstream consumer error. |
-| `otelcol_receiver_zabbix_values_duration` | Histogram recording every values cycle's duration in seconds, including errors. |
-| `otelcol_receiver_zabbix_emitted_points` | Counter increased by valid gauge points built from retrieved values before the downstream consumer returns. |
-| `otelcol_receiver_zabbix_invalid_values` | Counter increased by retrieved values skipped for malformed numbers, invalid timestamps, or unusable metric names. |
-| `otelcol_receiver_zabbix_filtered_items` | Counter increased by discovery items excluded for an unknown host or a configured host/item filter. |
-| `otelcol_receiver_zabbix_limited_items` | Counter increased by otherwise selected discovery items excluded by the per-host limit. |
+| `otelcol_receiver_zabbix_discover_attempts` | Счётчик, увеличиваемый в начале каждого цикла обнаружения. |
+| `otelcol_receiver_zabbix_discover_errors` | Счётчик, увеличиваемый при завершении цикла обнаружения с ошибкой. |
+| `otelcol_receiver_zabbix_discover_duration` | Гистограмма длительности каждого цикла обнаружения в секундах, включая циклы с ошибками. |
+| `otelcol_receiver_zabbix_values_attempts` | Счётчик, увеличиваемый в начале каждого цикла сбора значений. |
+| `otelcol_receiver_zabbix_values_errors` | Счётчик, увеличиваемый при завершении цикла сбора значений с ошибкой, включая ошибку следующего потребителя. |
+| `otelcol_receiver_zabbix_values_duration` | Гистограмма длительности каждого цикла сбора значений в секундах, включая циклы с ошибками. |
+| `otelcol_receiver_zabbix_emitted_points` | Счётчик, увеличиваемый на число корректных точек gauge, построенных из полученных значений до возврата следующего потребителя. |
+| `otelcol_receiver_zabbix_invalid_values` | Счётчик, увеличиваемый на число полученных значений, пропущенных из-за некорректных чисел, временных меток или непригодных имён метрик. |
+| `otelcol_receiver_zabbix_filtered_items` | Счётчик, увеличиваемый на число элементов обнаружения, исключённых из-за неизвестного узла или настроенного фильтра узлов/элементов. |
+| `otelcol_receiver_zabbix_limited_items` | Счётчик, увеличиваемый на число подходящих по остальным условиям элементов обнаружения, исключённых ограничением на узел. |
 
-## Deployment
+## Развёртывание
 
-### Container
+### Контейнер
 
-A multi-stage Dockerfile builds a statically linked Linux binary. The runtime image:
+Многоэтапный Dockerfile собирает статически скомпонованный бинарный файл Linux. Образ для выполнения:
 
-- Uses a non-root user
-- Contains only the binary and required trust roots
-- Exposes the Collector health and telemetry ports used by sample configuration
-- Defines no embedded credentials
+- Использует пользователя без прав root
+- Содержит только бинарный файл и необходимые корневые сертификаты доверия
+- Открывает порты состояния и телеметрии Collector, используемые в примере конфигурации
+- Не содержит встроенных учётных данных
 
 ### systemd
 
-VM assets include:
+Файлы для виртуальной машины включают:
 
-- A sample Collector YAML configuration
-- An environment-file template for `ZABBIX_TOKEN`
-- A hardened systemd unit
-- Installation and verification instructions
+- Пример конфигурации Collector в YAML
+- Шаблон файла окружения для `ZABBIX_TOKEN`
+- Модуль systemd с усиленными ограничениями безопасности
+- Инструкции по установке и проверке
 
-The service runs as a dedicated unprivileged account, restarts on failure, loads credentials from an administrator-readable environment file, and uses the Collector health extension for operational checks.
+Служба работает под отдельной непривилегированной учётной записью, перезапускается при сбое, загружает учётные данные из файла окружения, доступного для чтения администратору, и использует расширение проверки состояния Collector для эксплуатационных проверок.
 
 ### Kubernetes
 
-Kubernetes assets include:
+Файлы Kubernetes включают:
 
 - Namespace
-- Secret example for the Zabbix token
-- ConfigMap for Collector configuration
+- Пример Secret для токена Zabbix
+- ConfigMap для конфигурации Collector
 - Deployment
-- Service for health and telemetry endpoints
-- Readiness and liveness probes
-- Non-root security context
-- Resource requests and limits
+- Service для точек доступа состояния и телеметрии
+- Пробы готовности и жизнеспособности
+- Контекст безопасности без прав root
+- Запросы и ограничения ресурсов
 
-The receiver does not require Kubernetes API permissions, so no Role or RoleBinding is created.
+Приёмнику не требуются разрешения Kubernetes API, поэтому Role и RoleBinding не создаются.
 
-### Docker Compose demonstration
+### Демонстрация Docker Compose
 
-The demonstration contains:
+Демонстрация содержит:
 
-- PostgreSQL for Zabbix
-- Zabbix server
-- Zabbix web/API
-- A bootstrap job
-- A metric producer
-- The custom OpenTelemetry Collector
+- PostgreSQL для Zabbix
+- Сервер Zabbix
+- Веб-интерфейс/API Zabbix
+- Задание начальной настройки
+- Генератор метрик
+- Собственный OpenTelemetry Collector
 - VictoriaMetrics
 
-The bootstrap job waits for the Zabbix API, creates a monitored host and trapper item, creates and generates an API token, and writes a generated Collector configuration into a shared initialization volume. The Collector starts only after bootstrap succeeds. The producer regularly sends changing numeric values into the Zabbix trapper item.
+Задание начальной настройки ожидает API Zabbix, создаёт наблюдаемый узел и элемент данных trapper, создаёт и генерирует API-токен и записывает сгенерированную конфигурацию Collector в общий том инициализации. Collector запускается только после успешной начальной настройки. Генератор регулярно отправляет изменяющиеся числовые значения в элемент данных Zabbix trapper.
 
-A verification script records its start epoch, waits for the pipeline, queries the VictoriaMetrics query API for the expected `zabbix_` metric, and checks the automatic attributes and configured constant labels. It accepts only a positive sample whose sample timestamp is at or after the verifier start, so persisted stale data cannot prove the current run. This proves the path:
+Скрипт проверки фиксирует время своего запуска в формате Unix, ожидает готовности конвейера, запрашивает ожидаемую метрику `zabbix_` через API запросов VictoriaMetrics и проверяет автоматические атрибуты и настроенные постоянные метки. Он принимает только положительное измерение с временной меткой не раньше запуска проверки, поэтому сохранённые устаревшие данные не могут подтвердить текущий запуск. Это подтверждает следующий путь:
 
 ```text
-Zabbix item -> Zabbix API -> zabbix receiver -> OpenTelemetry metrics pipeline -> Prometheus remote write -> VictoriaMetrics
+Элемент данных Zabbix -> API Zabbix -> приёмник zabbix -> конвейер метрик OpenTelemetry -> Prometheus remote write -> VictoriaMetrics
 ```
 
-## Testing Strategy
+## Стратегия тестирования
 
-### Unit tests
+### Модульные тесты
 
-- Default configuration and all validation branches
-- Environment-override precedence and invalid override values
-- JSON-RPC request structure, token handling, response decoding, API errors, HTTP errors, and secret redaction
-- Include/exclude filter precedence
-- Deterministic per-host limiting
-- Immutable snapshot replacement and retention after discovery failure
-- Request chunking
-- Metric-name sanitization, reserved labels, descriptions, numeric parsing, and timestamps
-- Job startup semantics, intervals, jitter bounds, timeout propagation, non-overlap, and shutdown
-- Consumer errors and recovery on the next cycle
+- Конфигурация по умолчанию и все ветви проверки
+- Приоритет переопределений окружением и некорректные значения переопределений
+- Структура запросов JSON-RPC, обработка токена, декодирование ответов, ошибки API и HTTP, скрытие секретов
+- Приоритет фильтров включения/исключения
+- Детерминированное ограничение на узел
+- Замена неизменяемого снимка и его сохранение после сбоя обнаружения
+- Разбиение запросов на порции
+- Нормализация имён метрик, зарезервированные метки, описания, разбор чисел и временные метки
+- Семантика запуска заданий, интервалы, границы случайной задержки, передача тайм-аутов, отсутствие перекрытия и остановка
+- Ошибки потребителя и восстановление в следующем цикле
 
-### Integration tests
+### Интеграционные тесты
 
-An in-process HTTP fixture implements the required Zabbix JSON-RPC methods. Tests start the real receiver with an OpenTelemetry consuming sink and verify emitted `pmetric.Metrics`, multiple discovery cycles, failed refresh retention, chunking, and cancellation.
+Тестовый HTTP-сервер внутри процесса реализует необходимые методы JSON-RPC Zabbix. Тесты запускают настоящий приёмник с тестовым потребителем OpenTelemetry и проверяют выданные `pmetric.Metrics`, несколько циклов обнаружения, сохранение снимка при неудачном обновлении, разбиение на порции и отмену.
 
-### Build and packaging checks
+### Проверки сборки и упаковки
 
 - `go test ./...`
 - `go test -race ./...`
 - `go vet ./...`
-- Collector binary smoke test with configuration validation
-- Container image build
-- Static checks for deployment manifests
-- Docker Compose configuration validation
-- End-to-end Compose verification when Docker is available
+- Проверка базовой работоспособности бинарного файла Collector с проверкой конфигурации
+- Сборка контейнерного образа
+- Статические проверки манифестов развёртывания
+- Проверка конфигурации Docker Compose
+- Сквозная проверка Compose при доступности Docker
 
-## Completion Criteria
+## Критерии завершения
 
-The work is complete when:
+Работа завершена, когда:
 
-1. The receiver builds into the supplied custom Collector distribution.
-2. The supported settings and defaults decode, validate, and behave as specified.
-3. Numeric Zabbix items produce correctly named and attributed OpenTelemetry gauge points.
-4. The sample Collector pipeline writes those points to VictoriaMetrics.
-5. Unit and integration tests pass, including the race detector.
-6. Container, systemd, Kubernetes, and Docker Compose assets are documented and validated.
-7. The Compose verification observes the seeded Zabbix metric in VictoriaMetrics.
+1. Приёмник собирается в составе предоставленного собственного дистрибутива Collector.
+2. Поддерживаемые настройки и значения по умолчанию декодируются, проверяются и работают согласно спецификации.
+3. Числовые элементы данных Zabbix создают точки gauge OpenTelemetry с корректными именами и атрибутами.
+4. Пример конвейера Collector записывает эти точки в VictoriaMetrics.
+5. Модульные и интеграционные тесты проходят, включая детектор гонок.
+6. Файлы для контейнера, systemd, Kubernetes и Docker Compose документированы и проверены.
+7. Проверка Compose обнаруживает в VictoriaMetrics созданную при начальной настройке метрику Zabbix.

@@ -1,123 +1,125 @@
-# Docker Compose Demo UI Access Implementation Plan
+# План реализации доступа к интерфейсам демонстрации Docker Compose
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> Исторический материал. [Статус и указатель](../README.md) · [Актуальная документация](../../README.md). Не используйте как инструкцию для текущей версии.
 
-**Goal:** Remove retired vendor attribution, publish the Zabbix and VictoriaMetrics demo interfaces on configurable host-loopback ports, document how to compare the shared demo counter, and leave a verified demo stack running.
+> **Для агентов-исполнителей:** ОБЯЗАТЕЛЬНЫЙ ВСПОМОГАТЕЛЬНЫЙ НАВЫК: используйте superpowers:subagent-driven-development (рекомендуется) или superpowers:executing-plans для последовательной реализации задач этого плана. Для отслеживания шагов используется синтаксис флажков (`- [ ]`).
 
-**Architecture:** First neutralize obsolete attribution in documentation, comments, and its packaging assertion without changing the receiver contract. Then use a host-connected Compose bridge and add long-form `ports` entries only to `zabbix-web` and `victoriametrics`; bind both to `127.0.0.1`, interpolate configurable host ports with stable defaults, and retain the existing verifier as the metric-contract authority.
+**Цель:** удалить упоминания прежнего поставщика, опубликовать демонстрационные интерфейсы Zabbix и VictoriaMetrics на настраиваемых портах петлевого интерфейса хоста, описать сравнение общего демонстрационного счётчика и оставить проверенный демонстрационный стек работающим.
 
-**Tech Stack:** Docker Compose v2/v5, Go 1.25+, `gopkg.in/yaml.v3`, shell, curl, jq, Markdown
+**Архитектура:** сначала убрать устаревшие упоминания из документации, комментариев и соответствующей проверки упаковки, не меняя контракт приёмника. Затем использовать мост Compose с подключением к хосту и добавить развёрнутые записи `ports` только для `zabbix-web` и `victoriametrics`; привязать оба к `127.0.0.1`, подставлять настраиваемые порты хоста с постоянными значениями по умолчанию и сохранить существующую проверку как основной источник подтверждения контракта метрик.
 
-## Global Constraints
+**Технологии:** Docker Compose v2/v5, Go 1.25+, `gopkg.in/yaml.v3`, оболочка, curl, jq, Markdown
 
-- Bind published demo interfaces to `127.0.0.1`, never `0.0.0.0`.
-- Default the Zabbix host port to `8080` through `ZABBIX_WEB_PORT`.
-- Default the VictoriaMetrics host port to `8428` through `VICTORIAMETRICS_PORT`.
-- Keep container ports and internal URLs unchanged: Zabbix `8080`, VictoriaMetrics `8428`.
-- Set the shared `demo` bridge to `internal: false`; networks with `internal: true` cannot activate host port forwarding.
-- Do not change Collector code, receiver behavior, metric mapping, bootstrap logic, or producer cadence.
-- Remove the retired vendor name, URL, and compatibility claims from all current files while preserving every technical requirement.
-- `make demo-verify` remains authoritative for the exported metric contract.
-- Leave the successful demo stack running for interactive inspection.
+## Общие ограничения
 
-## File Structure
+- Привязывайте опубликованные демонстрационные интерфейсы к `127.0.0.1`, никогда к `0.0.0.0`.
+- По умолчанию задайте порт Zabbix на хосте `8080` через `ZABBIX_WEB_PORT`.
+- По умолчанию задайте порт VictoriaMetrics на хосте `8428` через `VICTORIAMETRICS_PORT`.
+- Сохраните порты контейнеров и внутренние URL: Zabbix `8080`, VictoriaMetrics `8428`.
+- Задайте общему мосту `demo` значение `internal: false`; сети с `internal: true` не могут активировать перенаправление портов хоста.
+- Не меняйте код Collector, поведение приёмника, сопоставление метрик, логику начальной настройки или периодичность генератора данных.
+- Удалите название прежнего поставщика, URL и заявления о совместимости из всех текущих файлов, сохранив все технические требования.
+- `make demo-verify` остаётся основной проверкой контракта экспортируемых метрик.
+- Оставьте успешно запущенный демонстрационный стек работающим для интерактивной проверки.
 
-- Modify `internal/packaging/assets_test.go`: enforce the Compose publication and README documentation contracts.
-- Modify `docs/configuration.md`: describe the implemented configuration without external vendor attribution.
-- Modify `docs/superpowers/specs/2026-08-05-zabbix-opentelemetry-receiver-design.md`: preserve requirements using project-owned terminology.
-- Modify `docs/superpowers/plans/2026-08-05-zabbix-opentelemetry-receiver.md`: preserve historical plan details using project-owned terminology.
-- Modify `internal/metrics/name.go`: describe metric naming as Prometheus-compatible.
-- Modify `compose.yaml`: publish the two UI ports on configurable loopback bindings.
-- Modify `README.md`: document URLs, credentials, navigation, query, overrides, and collection lag.
+## Структура файлов
+
+- Изменить `internal/packaging/assets_test.go`: проверять контракты публикации Compose и документации README.
+- Изменить `docs/configuration.md`: описать реализованную конфигурацию без упоминания внешнего поставщика.
+- Изменить `docs/superpowers/specs/2026-08-05-zabbix-opentelemetry-receiver-design.md`: сохранить требования, используя терминологию проекта.
+- Изменить `docs/superpowers/plans/2026-08-05-zabbix-opentelemetry-receiver.md`: сохранить подробности исторического плана, используя терминологию проекта.
+- Изменить `internal/metrics/name.go`: описать именование метрик как совместимое с Prometheus.
+- Изменить `compose.yaml`: опубликовать два порта интерфейсов с настраиваемой привязкой к петлевому интерфейсу.
+- Изменить `README.md`: описать URL, учётные данные, навигацию, запрос, переопределения и задержку сбора.
 
 ---
 
-### Task 0: Remove Retired Vendor Attribution
+### Задача 0: удалить упоминания прежнего поставщика
 
-**Files:**
-- Modify: `docs/configuration.md:3`
-- Modify: `docs/configuration.md:42`
-- Modify: `docs/superpowers/specs/2026-08-05-zabbix-opentelemetry-receiver-design.md:13`
-- Modify: `docs/superpowers/specs/2026-08-05-zabbix-opentelemetry-receiver-design.md:32`
-- Modify: `docs/superpowers/specs/2026-08-05-zabbix-opentelemetry-receiver-design.md:36`
-- Modify: `docs/superpowers/specs/2026-08-05-zabbix-opentelemetry-receiver-design.md:45`
-- Modify: `docs/superpowers/specs/2026-08-05-zabbix-opentelemetry-receiver-design.md:61`
-- Modify: `docs/superpowers/specs/2026-08-05-zabbix-opentelemetry-receiver-design.md:123`
-- Modify: `docs/superpowers/specs/2026-08-05-zabbix-opentelemetry-receiver-design.md:151`
-- Modify: `docs/superpowers/specs/2026-08-05-zabbix-opentelemetry-receiver-design.md:347`
-- Modify: `docs/superpowers/plans/2026-08-05-zabbix-opentelemetry-receiver.md:15`
-- Modify: `docs/superpowers/plans/2026-08-05-zabbix-opentelemetry-receiver.md:16`
-- Modify: `docs/superpowers/plans/2026-08-05-zabbix-opentelemetry-receiver.md:36`
-- Modify: `docs/superpowers/plans/2026-08-05-zabbix-opentelemetry-receiver.md:56`
-- Modify: `docs/superpowers/plans/2026-08-05-zabbix-opentelemetry-receiver.md:925`
-- Modify: `internal/metrics/name.go:9`
-- Modify: `internal/packaging/assets_test.go:45`
+**Файлы:**
+- Изменить: `docs/configuration.md:3`
+- Изменить: `docs/configuration.md:42`
+- Изменить: `docs/superpowers/specs/2026-08-05-zabbix-opentelemetry-receiver-design.md:13`
+- Изменить: `docs/superpowers/specs/2026-08-05-zabbix-opentelemetry-receiver-design.md:32`
+- Изменить: `docs/superpowers/specs/2026-08-05-zabbix-opentelemetry-receiver-design.md:36`
+- Изменить: `docs/superpowers/specs/2026-08-05-zabbix-opentelemetry-receiver-design.md:45`
+- Изменить: `docs/superpowers/specs/2026-08-05-zabbix-opentelemetry-receiver-design.md:61`
+- Изменить: `docs/superpowers/specs/2026-08-05-zabbix-opentelemetry-receiver-design.md:123`
+- Изменить: `docs/superpowers/specs/2026-08-05-zabbix-opentelemetry-receiver-design.md:151`
+- Изменить: `docs/superpowers/specs/2026-08-05-zabbix-opentelemetry-receiver-design.md:347`
+- Изменить: `docs/superpowers/plans/2026-08-05-zabbix-opentelemetry-receiver.md:15`
+- Изменить: `docs/superpowers/plans/2026-08-05-zabbix-opentelemetry-receiver.md:16`
+- Изменить: `docs/superpowers/plans/2026-08-05-zabbix-opentelemetry-receiver.md:36`
+- Изменить: `docs/superpowers/plans/2026-08-05-zabbix-opentelemetry-receiver.md:56`
+- Изменить: `docs/superpowers/plans/2026-08-05-zabbix-opentelemetry-receiver.md:925`
+- Изменить: `internal/metrics/name.go:9`
+- Изменить: `internal/packaging/assets_test.go:45`
 
-**Interfaces:**
-- Consumes: the existing public receiver settings, defaults, validation rules, and metric mapping.
-- Produces: identical technical documentation and runtime behavior with no retired vendor name, URL, or compatibility claim.
+**Интерфейсы:**
+- Зависимости: существующие публичные настройки приёмника, значения по умолчанию, правила валидации и сопоставление метрик.
+- Результат: та же техническая документация и поведение во время работы без названия прежнего поставщика, URL и заявления о совместимости.
 
-- [ ] **Step 1: Record the existing failing baseline**
+- [ ] **Шаг 1: зафиксировать исходное падение теста**
 
-Run:
+Выполните:
 
 ```bash
 go test ./... -count=1
 ```
 
-Expected: FAIL only in `TestDocumentationContract`, because it still requires
-an external source link that the README intentionally omits.
+Ожидаемый результат: FAIL только в `TestDocumentationContract`, поскольку он всё ещё требует
+ссылку на внешний источник, намеренно исключённую из README.
 
-- [ ] **Step 2: Replace configuration-document attribution with project-owned wording**
+- [ ] **Шаг 2: заменить упоминание поставщика в документации конфигурации формулировкой проекта**
 
-Make the opening of `docs/configuration.md` read:
-
-```markdown
-The public Collector receiver type is `zabbix`. This document describes the
-implemented receiver contract; the project's [approved design](superpowers/specs/2026-08-05-zabbix-opentelemetry-receiver-design.md)
-defines its compatibility boundary.
-```
-
-Make the unsupported-setting paragraph read:
+Задайте следующее начало `docs/configuration.md`:
 
 ```markdown
-`base.address`, standalone `/metrics` or `/health` endpoints, standalone
-exporter flags, and agent-specific exporter settings are not supported receiver
-keys. The OpenTelemetry Collector owns those concerns.
+Публичный тип приёмника Collector — `zabbix`. Этот документ описывает
+реализованный контракт приёмника; [утверждённый проект](superpowers/specs/2026-08-05-zabbix-opentelemetry-receiver-design.md)
+определяет границы его совместимости.
 ```
 
-- [ ] **Step 3: Neutralize the approved design and historical plan**
+Задайте следующий абзац о неподдерживаемых настройках:
 
-Use these exact replacement phrases while retaining the surrounding lists,
-tables, and requirements:
+```markdown
+`base.address`, отдельные конечные точки `/metrics` или `/health`, отдельные
+флаги экспортёра и настройки экспортёра, специфичные для агента, не поддерживаются как ключи
+приёмника. За эти возможности отвечает OpenTelemetry Collector.
+```
+
+- [ ] **Шаг 3: убрать упоминания из утверждённого проекта и исторического плана**
+
+Используйте следующие точные формулировки для замены, сохранив окружающие списки,
+таблицы и требования:
 
 ```text
-The receiver supports this public configuration interface:
-Agent-specific exporter configuration
-Default configuration matching the documented receiver defaults
-The receiver targets Zabbix 5.0 or later, subject to API-token availability in the deployed Zabbix version.
-The receiver defaults are:
-matching the public receiver interface
-The supported settings and defaults decode, validate, and behave as specified.
-Preserve the public receiver `schedule`, `prom.prefix`, `prom.const_labels`, and `zabbix` configuration keys and documented Zabbix environment overrides.
-Omit `base.address`, standalone exporter HTTP endpoints, standalone CLI flags, and agent-specific configuration.
-Public receiver configuration types, defaults, environment resolution, and validation.
-Prometheus-compatible metric-name construction.
-require the approved-design link and verify every supported environment variable appears in `docs/configuration.md`.
+Приёмник поддерживает следующий публичный интерфейс конфигурации:
+Конфигурация экспортёра, специфичная для агента
+Конфигурация по умолчанию, соответствующая документированным значениям приёмника
+Приёмник рассчитан на Zabbix 5.0 или новее при условии доступности API-токенов в развёрнутой версии Zabbix.
+Значения по умолчанию для приёмника:
+соответствие публичному интерфейсу приёмника
+Поддерживаемые настройки и значения по умолчанию декодируются, проходят валидацию и работают согласно спецификации.
+Сохраните публичные ключи конфигурации приёмника `schedule`, `prom.prefix`, `prom.const_labels` и `zabbix`, а также документированные переопределения Zabbix через переменные окружения.
+Исключите `base.address`, отдельные HTTP-точки экспортёра, отдельные флаги командной строки и конфигурацию, специфичную для агента.
+Публичные типы конфигурации приёмника, значения по умолчанию, разрешение переменных окружения и валидация.
+Формирование имён метрик, совместимых с Prometheus.
+требовать ссылку на утверждённый проект и проверять наличие каждой поддерживаемой переменной окружения в `docs/configuration.md`.
 ```
 
-Delete the obsolete standalone external-reference line from the approved
-design. Keep all technical key lists and defaults unchanged.
+Удалите устаревшую отдельную строку с внешней ссылкой из утверждённого
+проекта. Сохраните все технические списки ключей и значения по умолчанию.
 
-- [ ] **Step 4: Neutralize the Go comment and obsolete packaging assertion**
+- [ ] **Шаг 4: обновить комментарий Go и устаревшую проверку упаковки**
 
-Make the comment in `internal/metrics/name.go` read:
+Задайте следующий комментарий в `internal/metrics/name.go`:
 
 ```go
-// Name returns the Prometheus-compatible metric name for an item key.
+// Name возвращает совместимое с Prometheus имя метрики для ключа элемента данных.
 ```
 
-Make the README link assertion map in `TestDocumentationContract` read:
+Задайте следующую карту проверок ссылок README в `TestDocumentationContract`:
 
 ```go
 	for name, link := range map[string]string{
@@ -125,9 +127,9 @@ Make the README link assertion map in `TestDocumentationContract` read:
 	} {
 ```
 
-- [ ] **Step 5: Prove the attribution is absent and behavior is unchanged**
+- [ ] **Шаг 5: подтвердить отсутствие упоминаний и неизменность поведения**
 
-Run:
+Выполните:
 
 ```bash
 rg -n -i 'as''tra' . --glob '!.git/**' --glob '!vendor/**'
@@ -136,10 +138,10 @@ git diff -- demo/collector.yaml.tmpl
 git diff --check
 ```
 
-Expected: the scan and template diff print nothing; all Go packages pass; the
-whitespace check exits zero.
+Ожидаемый результат: поиск и сравнение шаблона ничего не выводят; тесты всех пакетов Go проходят;
+проверка пробельных символов завершается с кодом ноль.
 
-- [ ] **Step 6: Commit the attribution cleanup**
+- [ ] **Шаг 6: закоммитить удаление упоминаний**
 
 ```bash
 git add docs/configuration.md \
@@ -149,28 +151,28 @@ git add docs/configuration.md \
 git commit -m "docs: remove retired vendor attribution"
 ```
 
-### Task 1: Publish Configurable Loopback Ports
+### Задача 1: опубликовать настраиваемые порты петлевого интерфейса
 
-**Files:**
-- Modify: `internal/packaging/assets_test.go:279`
-- Modify: `internal/packaging/assets_test.go:928`
-- Modify: `compose.yaml:36`
-- Modify: `compose.yaml:90`
+**Файлы:**
+- Изменить: `internal/packaging/assets_test.go:279`
+- Изменить: `internal/packaging/assets_test.go:928`
+- Изменить: `compose.yaml:36`
+- Изменить: `compose.yaml:90`
 
-**Interfaces:**
-- Consumes: Compose interpolation and existing YAML assertion helpers.
-- Produces: `zabbix-web` on `127.0.0.1:${ZABBIX_WEB_PORT:-8080}` and `victoriametrics` on `127.0.0.1:${VICTORIAMETRICS_PORT:-8428}`.
+**Интерфейсы:**
+- Зависимости: интерполяция Compose и существующие вспомогательные функции проверки YAML.
+- Результат: `zabbix-web` на `127.0.0.1:${ZABBIX_WEB_PORT:-8080}` и `victoriametrics` на `127.0.0.1:${VICTORIAMETRICS_PORT:-8428}`.
 
-- [ ] **Step 1: Add failing Compose contract assertions**
+- [ ] **Шаг 1: добавить падающие проверки контракта Compose**
 
-Add to `TestComposeTopologyContract`:
+Добавьте в `TestComposeTopologyContract`:
 
 ```go
 	assertComposeLoopbackPort(t, services, "zabbix-web", "ZABBIX_WEB_PORT", 8080, 8080)
 	assertComposeLoopbackPort(t, services, "victoriametrics", "VICTORIAMETRICS_PORT", 8428, 8428)
 ```
 
-Add next to the other Compose helpers:
+Добавьте рядом с остальными вспомогательными функциями Compose:
 
 ```go
 func assertComposeLoopbackPort(t *testing.T, services map[string]any, serviceName, environmentVariable string, defaultPort, targetPort int) {
@@ -188,21 +190,21 @@ func assertComposeLoopbackPort(t *testing.T, services map[string]any, serviceNam
 }
 ```
 
-`strconv` is already imported.
+`strconv` уже импортирован.
 
-- [ ] **Step 2: Run the focused test and verify it fails**
+- [ ] **Шаг 2: запустить целевой тест и убедиться в его падении**
 
-Run:
+Выполните:
 
 ```bash
 go test ./internal/packaging -run '^TestComposeTopologyContract$' -count=1
 ```
 
-Expected: FAIL because `zabbix-web` has no `ports` key.
+Ожидаемый результат: FAIL, поскольку у `zabbix-web` нет ключа `ports`.
 
-- [ ] **Step 3: Add the minimal Compose port mappings**
+- [ ] **Шаг 3: добавить минимальные сопоставления портов Compose**
 
-Add to `zabbix-web`, after its health check:
+Добавьте в `zabbix-web` после проверки работоспособности:
 
 ```yaml
     ports:
@@ -212,7 +214,7 @@ Add to `zabbix-web`, after its health check:
         protocol: tcp
 ```
 
-Add to `victoriametrics`, after `volumes`:
+Добавьте в `victoriametrics` после `volumes`:
 
 ```yaml
     ports:
@@ -222,20 +224,20 @@ Add to `victoriametrics`, after `volumes`:
         protocol: tcp
 ```
 
-- [ ] **Step 4: Format and rerun the focused test**
+- [ ] **Шаг 4: отформатировать код и повторить целевой тест**
 
-Run:
+Выполните:
 
 ```bash
 gofmt -w internal/packaging/assets_test.go
 go test ./internal/packaging -run '^TestComposeTopologyContract$' -count=1
 ```
 
-Expected: PASS.
+Ожидаемый результат: PASS.
 
-- [ ] **Step 5: Verify default and overridden Compose expansion**
+- [ ] **Шаг 5: проверить раскрытие Compose со стандартными и переопределёнными значениями**
 
-Run:
+Выполните:
 
 ```bash
 ZABBIX_WEB_PORT=8080 VICTORIAMETRICS_PORT=8428 docker compose config --format json | jq -e '
@@ -252,28 +254,28 @@ ZABBIX_WEB_PORT=18080 VICTORIAMETRICS_PORT=18428 docker compose config --format 
 '
 ```
 
-Expected: both commands print `true` and exit zero.
+Ожидаемый результат: обе команды выводят `true` и завершаются с кодом ноль.
 
-- [ ] **Step 6: Commit the port contract and Compose change**
+- [ ] **Шаг 6: закоммитить контракт портов и изменение Compose**
 
 ```bash
 git add internal/packaging/assets_test.go compose.yaml
 git commit -m "feat: expose demo UIs on loopback"
 ```
 
-### Task 1.5: Enable Host Port Forwarding on the Demo Bridge
+### Задача 1.5: включить перенаправление портов хоста на демонстрационном мосту
 
-**Files:**
-- Modify: `internal/packaging/assets_test.go:318`
-- Modify: `compose.yaml:139`
+**Файлы:**
+- Изменить: `internal/packaging/assets_test.go:318`
+- Изменить: `compose.yaml:139`
 
-**Interfaces:**
-- Consumes: the loopback port mappings from Task 1 and the shared `demo` bridge.
-- Produces: a host-connected bridge that activates only the explicitly published loopback ports.
+**Интерфейсы:**
+- Зависимости: сопоставления портов петлевого интерфейса из задачи 1 и общий мост `demo`.
+- Результат: мост с подключением к хосту, активирующий только явно опубликованные порты петлевого интерфейса.
 
-- [ ] **Step 1: Change the network contract to require host connectivity**
+- [ ] **Шаг 1: изменить контракт сети, потребовав подключение к хосту**
 
-In `TestComposeTopologyContract`, change the existing network assertion to:
+В `TestComposeTopologyContract` замените существующую проверку сети на:
 
 ```go
 	networks := mapValue(t, value(t, compose, "networks"))
@@ -281,19 +283,19 @@ In `TestComposeTopologyContract`, change the existing network assertion to:
 	assertEqual(t, false, value(t, demoNetwork, "internal"))
 ```
 
-- [ ] **Step 2: Run the focused test and verify it fails**
+- [ ] **Шаг 2: запустить целевой тест и убедиться в его падении**
 
-Run:
+Выполните:
 
 ```bash
 go test ./internal/packaging -run '^TestComposeTopologyContract$' -count=1
 ```
 
-Expected: FAIL because the current YAML value is `true`, not `false`.
+Ожидаемый результат: FAIL, поскольку текущее значение YAML — `true`, а не `false`.
 
-- [ ] **Step 3: Make the bridge explicitly host-connected**
+- [ ] **Шаг 3: явно подключить мост к хосту**
 
-Change the top-level network declaration in `compose.yaml` to:
+Измените объявление сети верхнего уровня в `compose.yaml` на:
 
 ```yaml
 networks:
@@ -301,11 +303,11 @@ networks:
     internal: false
 ```
 
-Do not add published ports to any backend service.
+Не добавляйте опубликованные порты внутренним сервисам.
 
-- [ ] **Step 4: Verify the focused contract and expanded Compose model**
+- [ ] **Шаг 4: проверить целевой контракт и раскрытую модель Compose**
 
-Run:
+Выполните:
 
 ```bash
 gofmt -w internal/packaging/assets_test.go
@@ -319,28 +321,28 @@ docker compose config --format json | jq -e '
 '
 ```
 
-Expected: the Go test passes and jq prints `true`.
+Ожидаемый результат: тест Go проходит, jq выводит `true`.
 
-- [ ] **Step 5: Commit the corrected network contract**
+- [ ] **Шаг 5: закоммитить исправленный контракт сети**
 
 ```bash
 git add internal/packaging/assets_test.go compose.yaml
 git commit -m "fix: enable demo host port forwarding"
 ```
 
-### Task 2: Document and Run the Inspectable Demo
+### Задача 2: описать и запустить демонстрацию для интерактивной проверки
 
-**Files:**
-- Modify: `internal/packaging/assets_test.go:29`
-- Modify: `README.md:62`
+**Файлы:**
+- Изменить: `internal/packaging/assets_test.go:29`
+- Изменить: `README.md:62`
 
-**Interfaces:**
-- Consumes: Task 1 endpoints, Compose-only Zabbix credentials, and existing demo Make targets.
-- Produces: instructions for finding `demo.counter` and querying `zabbix_demo_counter{host="otel-demo-host",env="compose"}`.
+**Интерфейсы:**
+- Зависимости: адреса из задачи 1, учётные данные Zabbix только для Compose и существующие демонстрационные цели Make.
+- Результат: инструкции по поиску `demo.counter` и выполнению запроса `zabbix_demo_counter{host="otel-demo-host",env="compose"}`.
 
-- [ ] **Step 1: Add failing README contract assertions**
+- [ ] **Шаг 1: добавить падающие проверки контракта README**
 
-After the existing README clause checks in `TestDocumentationContract`, add:
+После существующих проверок содержимого README в `TestDocumentationContract` добавьте:
 
 ```go
 	for name, clause := range map[string]string{
@@ -357,51 +359,51 @@ After the existing README clause checks in `TestDocumentationContract`, add:
 	}
 ```
 
-The query string uses a Go raw string delimited by backticks.
+Запрос использует необработанную строку Go, ограниченную обратными кавычками.
 
-- [ ] **Step 2: Run the documentation test and verify it fails**
+- [ ] **Шаг 2: запустить тест документации и убедиться в его падении**
 
-Run:
+Выполните:
 
 ```bash
 go test ./internal/packaging -run '^TestDocumentationContract$' -count=1
 ```
 
-Expected: FAIL with missing UI URLs, credentials, query, and port override names.
+Ожидаемый результат: FAIL из-за отсутствующих URL интерфейсов, учётных данных, запроса и имён переменных переопределения портов.
 
-- [ ] **Step 3: Add concrete UI instructions to README**
+- [ ] **Шаг 3: добавить конкретные инструкции по интерфейсам в README**
 
-Insert after the three demo make commands:
+Вставьте после трёх демонстрационных команд make:
 
 ````markdown
-Both web interfaces are published only on host loopback:
+Оба веб-интерфейса опубликованы только на петлевом интерфейсе хоста:
 
-- Open Zabbix at <http://127.0.0.1:8080/> and sign in with the Compose-only
-  credentials `Admin` / `zabbix`. Open **Monitoring → Latest data**, select
-  host `otel-demo-host`, and find item key `demo.counter`.
-- Open VictoriaMetrics VMUI at <http://127.0.0.1:8428/vmui/> and run
+- Откройте Zabbix по адресу <http://127.0.0.1:8080/> и войдите с учётными данными,
+  используемыми только в Compose: `Admin` / `zabbix`. Откройте **Мониторинг → Последние данные (Monitoring → Latest data)**, выберите
+  узел `otel-demo-host` и найдите элемент данных с ключом `demo.counter`.
+- Откройте VictoriaMetrics VMUI по адресу <http://127.0.0.1:8428/vmui/> и выполните
   `zabbix_demo_counter{host="otel-demo-host",env="compose"}`.
 
-The producer increments the Zabbix item every five seconds, and the Collector
-reads values every five seconds. Both views therefore show the same source
-counter, although their latest displayed values can briefly differ by one
-collection cycle.
+Генератор увеличивает значение элемента данных Zabbix каждые пять секунд, а Collector
+считывает значения каждые пять секунд. Поэтому оба интерфейса показывают один исходный
+счётчик, хотя последние отображаемые значения могут ненадолго различаться на один
+цикл сбора.
 
-To avoid occupied host ports, choose alternatives without editing Compose:
+Чтобы обойти занятые порты хоста, выберите другие без изменения Compose:
 
 ```bash
 ZABBIX_WEB_PORT=18080 VICTORIAMETRICS_PORT=18428 make demo-up
 ```
 
-With those overrides, open `http://127.0.0.1:18080/` and
-`http://127.0.0.1:18428/vmui/`. Keep these interfaces on loopback: the demo
-uses well-known Zabbix credentials and does not configure VictoriaMetrics
-authentication.
+С этими переопределениями откройте `http://127.0.0.1:18080/` и
+`http://127.0.0.1:18428/vmui/`. Оставляйте интерфейсы на петлевом адресе: демонстрация
+использует общеизвестные учётные данные Zabbix и не настраивает аутентификацию
+VictoriaMetrics.
 ````
 
-- [ ] **Step 4: Run focused and static verification**
+- [ ] **Шаг 4: выполнить целевые и статические проверки**
 
-Run:
+Выполните:
 
 ```bash
 go test ./internal/packaging -run '^(TestDocumentationContract|TestComposeTopologyContract)$' -count=1
@@ -409,40 +411,40 @@ docker compose config --quiet
 git diff --check
 ```
 
-Expected: all commands exit zero.
+Ожидаемый результат: все команды завершаются с кодом ноль.
 
-- [ ] **Step 5: Choose free ports and start the real demo**
+- [ ] **Шаг 5: выбрать свободные порты и запустить реальную демонстрацию**
 
-Check defaults:
+Проверьте порты по умолчанию:
 
 ```bash
 lsof -nP -iTCP:8080 -sTCP:LISTEN
 lsof -nP -iTCP:8428 -sTCP:LISTEN
 ```
 
-Recreate the containers and network without deleting named volumes:
+Пересоздайте контейнеры и сеть, не удаляя именованные тома:
 
 ```bash
 docker compose down --remove-orphans
 make demo-up
 ```
 
-If either default port is occupied, choose unused values and keep the same
-assignments for both commands and all later Compose commands, for example:
+Если любой порт по умолчанию занят, выберите свободные значения и сохраняйте одни и те же
+присваивания в обеих командах и во всех последующих командах Compose, например:
 
 ```bash
 ZABBIX_WEB_PORT=18080 VICTORIAMETRICS_PORT=18428 docker compose down --remove-orphans
 ZABBIX_WEB_PORT=18080 VICTORIAMETRICS_PORT=18428 make demo-up
 ```
 
-Expected: named volumes remain; the `demo` network is recreated with
-`internal=false`; PostgreSQL, Zabbix server, and Zabbix web become healthy;
-bootstrap completes; producer, VictoriaMetrics, and the Collector remain
-running.
+Ожидаемый результат: именованные тома сохраняются; сеть `demo` пересоздаётся с
+`internal=false`; PostgreSQL, сервер Zabbix и веб-интерфейс Zabbix проходят проверку работоспособности;
+начальная настройка завершается; генератор, VictoriaMetrics и Collector продолжают
+работать.
 
-- [ ] **Step 6: Verify the metric and both host endpoints**
+- [ ] **Шаг 6: проверить метрику и оба адреса хоста**
 
-With default ports, run:
+С портами по умолчанию выполните:
 
 ```bash
 make demo-verify
@@ -457,20 +459,20 @@ curl --fail --silent --show-error --get \
   '
 ```
 
-Substitute selected host ports if overridden. Expected: the verifier prints one
-accepted series, both UI requests exit zero, and the API assertion prints
+При переопределении подставьте выбранные порты хоста. Ожидаемый результат: проверка выводит один
+принятый временной ряд, оба запроса к интерфейсам завершаются с кодом ноль, а проверка API выводит
 `true`.
 
-- [ ] **Step 7: Inspect both browser views and leave the stack running**
+- [ ] **Шаг 7: проверить оба интерфейса в браузере и оставить стек работающим**
 
-Open the documented URLs. In Zabbix, confirm that
-`otel-demo-host` / `demo.counter` has a recent increasing value. In VMUI,
-run the documented query and confirm `item_key="demo.counter"` and a recent
-positive value. Allow one collection cycle for convergence.
+Откройте документированные URL. В Zabbix убедитесь, что у
+`otel-demo-host` / `demo.counter` есть свежее растущее значение. В VMUI
+выполните документированный запрос и подтвердите `item_key="demo.counter"` и свежее
+положительное значение. Дождитесь одного цикла сбора для сближения значений.
 
-Do not run `make demo-down`; the operator requested an interactive demo.
+Не запускайте `make demo-down`: оператор запросил интерактивную демонстрацию.
 
-- [ ] **Step 8: Commit documentation and its contract**
+- [ ] **Шаг 8: закоммитить документацию и её контракт**
 
 ```bash
 git add internal/packaging/assets_test.go README.md

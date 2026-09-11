@@ -3,22 +3,22 @@ dist:
   name: otelcol-zabbix
   description: Local Zabbix receiver OCB verification binary
   output_path: ./.ocb/local
-  version: 0.1.0-dev
+  version: 0.2.0-dev
 
 receivers:
-  - gomod: github.com/wieso/zabbixreceiver/receiver/zabbixreceiver v0.1.0
+  - gomod: github.com/wieso/zabbixreceiver/receiver/zabbixreceiver v0.2.0
     path: ./receiver/zabbixreceiver
 
 processors:
-  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.154.0
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.160.0
 
 exporters:
-  - gomod: go.opentelemetry.io/collector/exporter/debugexporter v0.154.0
+  - gomod: go.opentelemetry.io/collector/exporter/debugexporter v0.160.0
 
 providers:
-  - gomod: go.opentelemetry.io/collector/confmap/provider/envprovider v1.60.0
-  - gomod: go.opentelemetry.io/collector/confmap/provider/fileprovider v1.60.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/envprovider v1.66.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/fileprovider v1.66.0
 
 telemetry:
-  gomod: go.opentelemetry.io/collector/service v0.154.0
+  gomod: go.opentelemetry.io/collector/service v0.160.0
   import: go.opentelemetry.io/collector/service/telemetry/otelconftelemetry

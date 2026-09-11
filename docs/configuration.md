@@ -1,12 +1,15 @@
-# Receiver configuration
+# Настройка приёмника
 
-The public Collector receiver type is `zabbix`. This document describes the implemented receiver contract; the project's [approved design](superpowers/specs/2026-08-05-zabbix-opentelemetry-receiver-design.md) defines its compatibility boundary.
+[Обзор проекта](../README.md) · [Развёртывание](deployment.md)
 
-## Complete YAML schema
+Публичный тип приёмника Collector — `zabbix`. Здесь собраны параметры и поведение текущей реализации: схема API, схема Streaming, значения по умолчанию, окружение, метрики API, телеметрия и контракт Streaming.
+
+## Схема YAML для API
 
 ```yaml
 receivers:
   zabbix:
+    mode: api
     schedule:
       jitter: 5s
       jobs:
@@ -39,49 +42,77 @@ receivers:
         item_key_exclude_regex: ""
 ```
 
-`base.address`, standalone `/metrics` or `/health` endpoints, standalone exporter flags, and agent-specific exporter settings are not supported receiver keys. The OpenTelemetry Collector owns those concerns.
+`base.address`, отдельные адреса `/metrics` или `/health`, флаги самостоятельного экспортёра и настройки экспортёра, специфичные для агента, не поддерживаются в качестве ключей приёмника. За эти функции отвечает OpenTelemetry Collector.
 
-## Settings and defaults
+## Независимая конфигурация YAML для Streaming
 
-| YAML setting | Default | Behavior |
+```yaml
+receivers:
+  zabbix/stream:
+    mode: streaming
+    streaming:
+      endpoint: 0.0.0.0:8081
+      token: ${env:ZABBIX_STREAM_TOKEN}
+    prom:
+      prefix: zabbix_stream_
+```
+
+В этом примере API-обогащение выключено: блоки `schedule` и `zabbix` не нужны, API-клиент и обнаружение не используются. Для опционального обогащения см. [метаданные](metadata.md). Необязательные настройки тайм-аута HTTP и размера тела запроса имеют значения по умолчанию, указанные ниже. Режимы решают разные задачи и не гарантируют одинаковые имена или метки метрик.
+
+## Настройки и значения по умолчанию
+
+`schedule.*` и `zabbix.*` применяются в режиме API и при API-обогащении Streaming; `streaming.*` — только к Streaming. `prom.*` и `metadata.*` используются в обоих режимах.
+
+| Настройка YAML | По умолчанию | Поведение |
 | --- | --- | --- |
-| `schedule.jitter` | `5s` | Random delay from zero through the configured duration before each run. Negative values are invalid. |
-| `schedule.jobs.discover.enabled` | `true` | Starts the discovery loop. At least one job must be enabled. |
-| `schedule.jobs.discover.run_on_start` | `true` | When true, the first discovery runs after jitter; otherwise it waits one interval, then jitter. |
-| `schedule.jobs.discover.interval` | `5m` | Wait after a run before the next run's jitter. Must be positive when enabled. |
-| `schedule.jobs.discover.timeout` | `60s` | Outer deadline for one discovery cycle. Must be positive when enabled. |
-| `schedule.jobs.values.enabled` | `true` | Starts the values loop. |
-| `schedule.jobs.values.run_on_start` | `false` | When true, the first values collection runs after jitter; otherwise it waits one interval, then jitter. |
-| `schedule.jobs.values.interval` | `30s` | Wait after a run before the next run's jitter. Must be positive when enabled. |
-| `schedule.jobs.values.timeout` | `20s` | Outer deadline for one values cycle. Must be positive when enabled. |
-| `prom.prefix` | `zabbix_` | Prefix joined directly to the sanitized item key. It must match `[a-zA-Z_:][a-zA-Z0-9_:]*`. |
-| `prom.const_labels` | empty | String attributes added to every point before reserved identity attributes. |
-| `zabbix.url` | none | Required HTTP or HTTPS Zabbix `api_jsonrpc.php` URL. |
-| `zabbix.token` | none | Required opaque credential: a modern API token or a legacy `user.login` session token. |
-| `zabbix.timeout` | `30s` | Per-request HTTP client timeout. Must be positive. The shorter of this and the active job deadline wins. |
-| `zabbix.limits.max_metrics_per_host` | `1000` | Maximum selected items per host after filtering, preserving Zabbix item order. Must be positive. |
-| `zabbix.limits.items_per_request` | `1000` | Maximum item IDs per value `item.get` request. Must be positive. |
-| `zabbix.filters.*` | empty | Go regular expressions. An empty expression disables that filter. Invalid expressions fail startup. |
+| `mode` | `api` | `api` опрашивает значения; `streaming` принимает HTTP NDJSON. При API-обогащении Streaming запускается только задача обнаружения. |
+| `streaming.enrich_with_api` | `false` | Обогащать streaming из кэша API по `itemid`; требует API-учётных данных, включённых `metadata` и `discover`. |
+| `metadata.enabled` | `true` | Передавать дополнительные метаданные в лейблы. `false` сохраняет прежний набор атрибутов и запросов API. |
+| `metadata.inherited_host_tags` | `true` | Запрашивать теги родительских шаблонов хоста отдельно от собственных тегов. |
+| `metadata.inventory_fields` | `[]` | Явный список полей inventory для API. Пустой список отключает запрос inventory. |
+| `streaming.endpoint` | `127.0.0.1:8081` | Адрес HTTP-сервера (`host:port`), обслуживающего `/v1/history`. |
+| `streaming.token` | пусто | Необязательный непрозрачный Bearer-токен для входящих запросов; независим от `zabbix.token`. |
+| `streaming.max_request_body_size` | `10485760` | Максимальный размер тела в байтах, отдельно до и после распаковки; в режиме Streaming должен быть положительным. |
+| `streaming.timeout` | `30s` | Положительный тайм-аут чтения/записи HTTP и обработки следующими компонентами. |
+| `schedule.jitter` | `5s` | Случайная задержка от нуля до заданной длительности перед каждым запуском. Отрицательные значения недопустимы. |
+| `schedule.jobs.discover.enabled` | `true` | Запускает цикл обнаружения. Должна быть включена хотя бы одна задача. |
+| `schedule.jobs.discover.run_on_start` | `true` | При true первое обнаружение выполняется после случайной задержки; иначе сначала ожидается один интервал, затем случайная задержка. |
+| `schedule.jobs.discover.interval` | `5m` | Ожидание после выполнения до случайной задержки следующего запуска. Должно быть положительным, если задача включена. |
+| `schedule.jobs.discover.timeout` | `60s` | Общий предельный срок одного цикла обнаружения. Должен быть положительным, если задача включена. |
+| `schedule.jobs.values.enabled` | `true` | Запускает цикл сбора значений в режиме API; игнорируется в режиме Streaming. |
+| `schedule.jobs.values.run_on_start` | `false` | При true первый сбор значений выполняется после случайной задержки; иначе сначала ожидается один интервал, затем случайная задержка. |
+| `schedule.jobs.values.interval` | `30s` | Ожидание после выполнения до случайной задержки следующего запуска. Должно быть положительным, если задача включена. |
+| `schedule.jobs.values.timeout` | `20s` | Общий предельный срок одного цикла сбора значений. Должен быть положительным, если задача включена. |
+| `prom.prefix` | `zabbix_` | Префикс, добавляемый непосредственно к нормализованному ключу элемента (API) или отображаемому имени элемента (Streaming). Должен соответствовать `[a-zA-Z_:][a-zA-Z0-9_:]*`. |
+| `prom.const_labels` | пусто | Строковые атрибуты, добавляемые к каждой точке перед зарезервированными атрибутами идентификации. |
+| `zabbix.url` | не задано | Обязательный HTTP- или HTTPS-адрес Zabbix `api_jsonrpc.php`. |
+| `zabbix.token` | не задано | Обязательные непрозрачные учётные данные: современный API-токен или устаревший токен сеанса `user.login`. |
+| `zabbix.timeout` | `30s` | Тайм-аут HTTP-клиента для каждого запроса. Должен быть положительным. Действует более короткий из него и оставшегося срока активной задачи. |
+| `zabbix.limits.max_metrics_per_host` | `1000` | Максимальное число выбранных элементов на узел после фильтрации с сохранением порядка элементов Zabbix. Должно быть положительным. |
+| `zabbix.limits.items_per_request` | `1000` | Максимальное число идентификаторов элементов в одном запросе значений `item.get`. Должно быть положительным. |
+| `zabbix.filters.*` | пусто | Регулярные выражения Go. Пустое выражение отключает фильтр. Некорректные выражения препятствуют запуску. |
 
-Configuration validation has two stages. Collector recursive validation operates on an environment-resolved clone: the receiver clones the decoded configuration, applies explicit receiver environment overrides, and validates the resolved values without mutating the decoded object. During component construction, the factory independently clones the decoded configuration, applies the same overrides, and invokes the pure resolved-config validator. Independent validation problems are returned together and name their fields. Both jobs disabled, a missing/invalid URL or token after overrides, a non-positive Zabbix request timeout, a negative jitter, invalid enabled-job timing, non-positive limits, invalid regexes, and an invalid prefix prevent Collector startup.
+Независимые ошибки валидации возвращаются вместе с именами полей. В режиме API запуск Collector блокируют: отключение обеих задач, отсутствующие или некорректные URL либо токен после переопределений, неположительный тайм-аут запросов Zabbix, отрицательная случайная задержка, некорректные временные параметры включённой задачи, неположительные лимиты, некорректные регулярные выражения и префикс.
 
-## Environment precedence
+## Приоритет переменных окружения API
 
-Collector `${env:NAME}` interpolation is evaluated while decoding the YAML. The following explicit receiver variables are then applied to a clone for Collector validation and applied again to a separate factory clone for construction. If a variable is present, including when it is present with an empty value, it replaces the decoded value at both stages.
+В режиме Streaming **без `streaming.enrich_with_api`** блоки `schedule` и `zabbix` целиком и все пять явных переопределений окружения API игнорируются, включая их валидацию. Не указывайте эти блоки. Применяются настройки `prom`, `metadata` и `streaming`. При `streaming.enrich_with_api: true` блоки `schedule` и `zabbix` и переопределения окружения API используются для обновления кэша; задача `values` не запускается. `${env:ZABBIX_STREAM_TOKEN}` использует обычную подстановку Collector.
 
-| Environment variable | Receiver setting | Parsing |
+Подстановка Collector `${env:NAME}` выполняется при декодировании YAML. Валидация конфигурации состоит из двух этапов. Рекурсивная валидация Collector работает с копией, в которой разрешены значения окружения: приёмник копирует декодированную конфигурацию, применяет явные переопределения окружения приёмника и проверяет итоговые значения без изменения декодированного объекта. При создании компонента фабрика независимо копирует декодированную конфигурацию, применяет те же переопределения и вызывает чистую проверку итоговой конфигурации. Если переменная задана, даже пустой строкой, она заменяет декодированное значение на обоих этапах.
+
+| Переменная окружения | Настройка приёмника | Разбор значения |
 | --- | --- | --- |
-| `ZABBIX_URL` | `zabbix.url` | String |
-| `ZABBIX_TOKEN` | `zabbix.token` | Opaque string |
-| `ZABBIX_TIMEOUT` | `zabbix.timeout` | Go duration, such as `7s` |
-| `MAX_METRICS_PER_HOST` | `zabbix.limits.max_metrics_per_host` | Base-10 integer |
-| `ZABBIX_ITEMS_PER_REQUEST` | `zabbix.limits.items_per_request` | Base-10 integer |
+| `ZABBIX_URL` | `zabbix.url` | Строка |
+| `ZABBIX_TOKEN` | `zabbix.token` | Непрозрачная строка |
+| `ZABBIX_TIMEOUT` | `zabbix.timeout` | Длительность Go, например `7s` |
+| `MAX_METRICS_PER_HOST` | `zabbix.limits.max_metrics_per_host` | Целое число в десятичной системе |
+| `ZABBIX_ITEMS_PER_REQUEST` | `zabbix.limits.items_per_request` | Целое число в десятичной системе |
 
-Explicit receiver variables take precedence over decoded YAML during both stages. Environment-only `ZABBIX_URL` and `ZABBIX_TOKEN` can satisfy omitted `zabbix.url` and `zabbix.token`. Likewise, YAML with `items_per_request: 0` is valid when `ZABBIX_ITEMS_PER_REQUEST=250` is present, because validation sees the resolved positive value. Without that override, the decoded zero remains invalid.
+Явные переменные приёмника имеют приоритет над декодированным YAML на обоих этапах. `ZABBIX_URL` и `ZABBIX_TOKEN`, заданные только в окружении, могут заполнить отсутствующие `zabbix.url` и `zabbix.token`. Аналогично, YAML с `items_per_request: 0` корректен при заданной `ZABBIX_ITEMS_PER_REQUEST=250`, поскольку валидация видит итоговое положительное значение. Без этого переопределения декодированный ноль остаётся недопустимым.
 
-Invalid duration or integer overrides fail validation with an error naming the environment variable. An override that parses but produces an invalid resolved value, such as `ZABBIX_ITEMS_PER_REQUEST=0` or `ZABBIX_TIMEOUT=0s`, fails with the corresponding field name. `zabbix.timeout` must remain positive after overrides. Unset variables leave the decoded YAML values unchanged. `VICTORIAMETRICS_REMOTE_WRITE_URL` in the sample configuration is standard Collector interpolation for the `prometheusremotewrite` exporter; it is not a receiver override.
+Переопределения с некорректной длительностью или целым числом приводят к ошибке валидации с именем переменной окружения. Переопределение, которое удалось разобрать, но которое даёт недопустимое итоговое значение, например `ZABBIX_ITEMS_PER_REQUEST=0` или `ZABBIX_TIMEOUT=0s`, приводит к ошибке с именем соответствующего поля. После переопределений `zabbix.timeout` должен оставаться положительным. Незаданные переменные оставляют декодированные значения YAML без изменений. `VICTORIAMETRICS_REMOTE_WRITE_URL` в примере конфигурации — стандартная подстановка Collector для экспортёра `prometheusremotewrite`, а не переопределение приёмника.
 
-Example with overrides that replace YAML values:
+Пример с переопределениями значений YAML:
 
 ```bash
 ZABBIX_URL=https://zabbix.example.com/api_jsonrpc.php \
@@ -93,64 +124,131 @@ VICTORIAMETRICS_REMOTE_WRITE_URL=https://vm.example.com/api/v1/write \
 ./bin/otelcol-zabbix --config configs/otelcol.yaml
 ```
 
-## Authentication
+## Аутентификация API
 
-The client begins in modern mode and sends `Authorization: Bearer <credential>` without a JSON-RPC `auth` property. If Zabbix returns a JSON-RPC authentication error, it retries that operation exactly once with the credential in the legacy JSON-RPC `auth` property. A successful retry caches legacy mode for later calls. A failed retry is returned and does not change the cached mode.
+Клиент начинает работу в современном режиме и отправляет `Authorization: Bearer <credential>` без свойства JSON-RPC `auth`. Если Zabbix возвращает ошибку аутентификации JSON-RPC, клиент повторяет эту операцию ровно один раз с учётными данными в устаревшем свойстве JSON-RPC `auth`. Успешная повторная попытка сохраняет устаревший режим для последующих вызовов. Ошибка повторной попытки возвращается вызывающему коду и не меняет сохранённый режим.
 
-For modern Zabbix, supply an API token. Long-lived API tokens require a Zabbix version that implements them. For legacy Zabbix 5.x, obtain a session token separately with `user.login` and supply that token as `zabbix.token`; the receiver does not accept or exchange a username/password. HTTP, transport, decoding, and non-authentication API errors do not cause legacy fallback. Credentials and complete authenticated request bodies are not logged, and occurrences of the configured credential in returned errors are replaced with `[REDACTED]`.
+Для современного Zabbix укажите API-токен. Долгоживущие API-токены требуют версии Zabbix с их поддержкой. Для устаревшего Zabbix 5.x отдельно получите токен сеанса через `user.login` и передайте его как `zabbix.token`; приёмник не принимает и не обменивает имя пользователя и пароль. Ошибки HTTP, транспорта, декодирования и ошибки API, не связанные с аутентификацией, не вызывают переключения в устаревший режим. Учётные данные и полные тела аутентифицированных запросов не журналируются, а вхождения настроенных учётных данных в возвращаемые ошибки заменяются на `[REDACTED]`.
 
-## Discovery, filters, and snapshots
+## Обнаружение, фильтры и снимки API
 
-One discovery cycle:
+Один цикл обнаружения:
 
-1. Requests available hosts, ordered by `hostid`.
-2. Requests items for those hosts and asks Zabbix for numeric value types only: float (`0`) and unsigned integer (`3`), ordered by `itemid`.
-3. Rejects items with an unknown host.
-4. Applies a non-empty host include regex, then the host exclude regex.
-5. Applies a non-empty item-key include regex, then the item-key exclude regex.
-6. Applies `max_metrics_per_host` after all filters, preserving the returned item order.
-7. Atomically replaces the immutable metadata snapshot.
+1. Запрашивает доступные узлы с сортировкой по `hostid`.
+2. Запрашивает элементы этих узлов, указывая Zabbix только числовые типы значений: число с плавающей точкой (`0`) и беззнаковое целое (`3`), с сортировкой по `itemid`.
+3. Отбрасывает элементы с неизвестным узлом.
+4. Применяет непустое регулярное выражение включения узлов, затем выражение исключения узлов.
+5. Применяет непустое регулярное выражение включения ключей элементов, затем выражение исключения ключей.
+6. Применяет `max_metrics_per_host` после всех фильтров, сохраняя порядок возвращённых элементов.
+7. Атомарно заменяет неизменяемый снимок метаданных.
 
-The snapshot is replaced only after both host and item requests succeed. A discovery error therefore retains the last good snapshot. A successful discovery with no selected items publishes an empty snapshot. Discovery and values jobs are independently serialized; they can run concurrently with each other, while values always sees one stable snapshot.
+Снимок заменяется только после успешного выполнения обоих запросов: узлов и элементов. Поэтому ошибка обнаружения сохраняет последний корректный снимок. Успешное обнаружение без выбранных элементов публикует пустой снимок. Запуски задач обнаружения и сбора значений сериализованы независимо; сами задачи могут выполняться параллельно, при этом сбор значений всегда видит один стабильный снимок.
 
-## Values, batches, and failures
+## Значения API, пакеты и ошибки
 
-With no snapshot or an empty snapshot, a values cycle succeeds without emitting a batch. Otherwise, item IDs are divided into chunks no larger than `items_per_request`. All chunk responses are accumulated before conversion.
+Если снимка нет или он пуст, цикл сбора значений успешно завершается без отправки пакета. Иначе идентификаторы элементов делятся на порции не больше `items_per_request`. Ответы всех порций накапливаются до преобразования.
 
-If any chunk request fails, no partial batch is delivered for that cycle. Individual values with a malformed number, invalid/out-of-range `lastclock`, missing metadata, or unusable metric name are skipped while other valid values are emitted. If no points remain, the downstream consumer is not called. Otherwise exactly one metrics batch is delivered. A downstream consumer error is returned, logged by the job loop, and counted; scheduled collection continues on the next cycle. Discovery, value-request, and downstream errors do not terminate their job loops.
+Если запрос любой порции завершается ошибкой, частичный пакет этого цикла не передаётся. Отдельные значения с некорректным числом, недопустимым или выходящим за диапазон `lastclock`, отсутствующими метаданными либо непригодным именем метрики пропускаются, а остальные корректные значения отправляются. Если точек не осталось, следующий обработчик не вызывается. Иначе передаётся ровно один пакет метрик. Ошибка следующего обработчика возвращается, журналируется циклом задачи и учитывается в счётчике; сбор по расписанию продолжается в следующем цикле. Ошибки обнаружения, запросов значений и следующих обработчиков не завершают циклы задач.
 
-There is no same-cycle retry beyond the single modern-to-legacy authentication fallback. Each job cycle has its own timeout context. Collector shutdown cancels scheduler waits and in-flight Zabbix requests and waits for enabled loops within the provided shutdown context.
+В рамках одного цикла нет повторных попыток, кроме переключения с современной аутентификации на устаревшую и перехода с `selectHostGroups` на `selectGroups`, если API отклоняет современный параметр групп или молча не возвращает свойство `hostgroups`. Каждый цикл задачи имеет собственный контекст с тайм-аутом. Завершение Collector отменяет ожидания планировщика и выполняющиеся запросы Zabbix и ожидает завершения включённых циклов в пределах предоставленного контекста остановки.
 
-## Metric contract
+## Контракт метрик API
 
-For every matched valid Zabbix value:
+Для каждого подходящего корректного значения Zabbix:
 
-- Metric type: OpenTelemetry gauge.
-- Point value: double, including Zabbix unsigned integer items.
-- Name: `{prom.prefix}{sanitized_item_key}`. Each item-key rune outside `[a-zA-Z0-9_:]` is replaced with `_`; trailing underscores are removed; `_` is prepended if the combined name begins with an invalid character. Invalid characters are replaced independently, so underscores are not collapsed.
-- Description: Zabbix item display name.
-- Timestamp: Zabbix `lastclock`, interpreted as non-negative Unix seconds and converted to nanoseconds.
-- Attributes: all `prom.const_labels`, followed by `host`, `hostid`, `item_key`, and `itemid` from discovery metadata.
+- Тип метрики: OpenTelemetry gauge.
+- Значение точки: double, включая беззнаковые целочисленные элементы Zabbix.
+- Имя: `{prom.prefix}{sanitized_item_key}`. Каждый символ Unicode ключа вне `[a-zA-Z0-9_:]` заменяется на `_`; завершающие подчёркивания удаляются; если объединённое имя начинается с недопустимого символа, в начало добавляется `_`. Недопустимые символы заменяются независимо, поэтому последовательности подчёркиваний не схлопываются.
+- Описание: отображаемое имя элемента Zabbix.
+- Временная метка: секунды API `lastclock`, преобразованные в наносекунды.
+- Атрибуты: все `prom.const_labels`, затем `host`, `hostid`, `item_key` и `itemid` из метаданных обнаружения. При `metadata.enabled: true` (по умолчанию) добавляются [теги, группы и метаданные](metadata.md).
 
-Because the four reserved attributes are written last, their discovery values take precedence over constant labels with the same names. Name collisions remain distinguishable through `item_key` and `itemid`.
+Поскольку четыре зарезервированных атрибута записываются последними, их значения из обнаружения имеют приоритет над одноимёнными постоянными метками. Коллизии имён различаются через `item_key` и `itemid`.
 
-## Receiver self-telemetry
+## Внутренняя телеметрия приёмника
 
-The authoritative receiver telemetry surface is exactly the ten instruments below:
+Инструменты обнаружения и его фильтры/лимиты используются в режиме API и в Streaming с `streaming.enrich_with_api: true`. Влияние отбора элементов на приём Streaming описано в [контракте API-обогащения](metadata.md).
 
-| Instrument | Semantics |
+Метрики Zabbix формируются как `pmetric.Metrics` и передаются следующему `consumer.Metrics` через `ConsumeMetrics`; пакетирование и отправку выполняют стандартные `batch` и `prometheusremotewrite`. Собственного клиента remote-write или Prometheus registry в приёмнике нет.
+
+Приёмник использует `receiver.Settings.Logger`, `MeterProvider` и стандартный `receiverhelper.ObsReport` Collector. Внутренние метрики доступны на `http://localhost:8888/metrics`; это отдельный поток от метрик Zabbix, отправляемых через pipeline.
+
+Собственные инструменты имеют атрибуты `receiver` (например, `zabbix/api`) и `mode` (`api` или `streaming`). Идентификаторы узлов/элементов, URL, токены и тексты ошибок в метки не попадают. Инструменты:
+
+| Инструмент | Семантика |
 | --- | --- |
-| `otelcol_receiver_zabbix_discover_attempts` | Counter incremented at the start of every discovery cycle. |
-| `otelcol_receiver_zabbix_discover_errors` | Counter incremented when a discovery cycle returns an error. |
-| `otelcol_receiver_zabbix_discover_duration` | Histogram recording every discovery cycle's duration in seconds, including failed cycles. |
-| `otelcol_receiver_zabbix_values_attempts` | Counter incremented at the start of every values cycle. |
-| `otelcol_receiver_zabbix_values_errors` | Counter incremented when a values cycle returns an error, including downstream consumer errors. |
-| `otelcol_receiver_zabbix_values_duration` | Histogram recording every values cycle's duration in seconds, including failed cycles. |
-| `otelcol_receiver_zabbix_emitted_points` | Counter increased by valid gauge points built from retrieved values before the downstream consumer returns. |
-| `otelcol_receiver_zabbix_invalid_values` | Counter increased by retrieved values skipped for malformed numbers, invalid timestamps, or unusable metric names. |
-| `otelcol_receiver_zabbix_filtered_items` | Counter increased by discovery items excluded because their host is unknown or a configured host/item filter rejects them. |
-| `otelcol_receiver_zabbix_limited_items` | Counter increased by otherwise selected discovery items excluded by the per-host limit. |
+| `otelcol_receiver_zabbix_discover_attempts` | Счётчик, увеличиваемый в начале каждого цикла обнаружения. |
+| `otelcol_receiver_zabbix_discover_errors` | Счётчик, увеличиваемый при возврате ошибки циклом обнаружения. |
+| `otelcol_receiver_zabbix_discover_duration` | Гистограмма длительности каждого цикла обнаружения в секундах, включая неудачные циклы. |
+| `otelcol_receiver_zabbix_values_attempts` | Счётчик, увеличиваемый в начале каждого цикла сбора значений API или HTTP-запроса Streaming. |
+| `otelcol_receiver_zabbix_values_errors` | Счётчик, увеличиваемый при ошибке цикла сбора значений API или ответе на запрос Streaming с кодом, отличным от 200. |
+| `otelcol_receiver_zabbix_values_duration` | Гистограмма длительности каждого цикла сбора значений API или запроса Streaming в секундах, включая неудачные. |
+| `otelcol_receiver_zabbix_emitted_points` | Счётчик точек, успешно принятых следующим обработчиком в обоих режимах. Ошибка downstream не увеличивает его; при наличии batch/очереди это ещё не подтверждение доставки в backend. |
+| `otelcol_receiver_zabbix_invalid_values` | Счётчик полученных значений, пропущенных из-за некорректных чисел, временных меток или непригодных имён метрик; в Streaming также учитывает битый JSON и отсутствующие обязательные поля. |
+| `otelcol_receiver_zabbix_filtered_items` | Счётчик элементов обнаружения, исключённых из-за неизвестного узла или настроенного фильтра узлов/элементов. |
+| `otelcol_receiver_zabbix_limited_items` | Счётчик элементов обнаружения, прошедших отбор, но исключённых из-за лимита на узел. |
+| `otelcol_receiver_zabbix_discovered_hosts` | Gauge числа узлов с отобранными элементами в последнем успешном discovery. |
+| `otelcol_receiver_zabbix_discovered_items` | Gauge числа отобранных элементов в последнем успешном discovery. |
+| `otelcol_receiver_zabbix_discover_last_success_timestamp` | Unix-время последнего успешного discovery в секундах; до успеха — 0. |
+| `otelcol_receiver_zabbix_values_last_success_timestamp` | Unix-время последнего успешного сбора/Streaming-запроса. Пропуски API до discovery или при пустом snapshot не обновляют время. |
+| `otelcol_receiver_zabbix_streaming_requests` | Завершённые HTTP-запросы с дополнительной меткой `http.response.status_code` (в Prometheus — `http_response_status_code`). |
 
-These are Collector-native instruments when the configured telemetry reader exposes them. Separate success, host-count, item-count, requested-item, and downstream-failure instruments are not part of the accepted surface.
+При ошибке discovery gauges сохраняют последний успешный snapshot; успешный пустой discovery обнуляет размеры. Собственные счётчики циклов/ошибок/точек и gauges применимого режима появляются до первого запроса; гистограммы, HTTP-статусы и стандартные accepted/refused — после первой операции. Для гистограмм заданы границы от 5 мс до 60 с и стандартный бакет `+Inf`.
 
-The production container and Kubernetes samples expose standard Collector telemetry on port 8888. Treat it as an unauthenticated operational endpoint and restrict network access appropriately.
+`receiverhelper` добавляет стандартные `otelcol_receiver_accepted_metric_points` и `otelcol_receiver_refused_metric_points` с метками `receiver` и `transport=http`. Некорректные запросы, число точек которых неизвестно, учитываются счётчиками ошибок/HTTP-статусов без выдуманного числа отказанных точек. Классификация `failed_metric_points` и `receiver_requests` зависит от feature gate `receiverhelper.newReceiverMetrics` используемого Collector; ошибки следующего обработчика помечены как downstream.
+
+В таблице приведены имена OTel-инструментов. В используемом Collector v0.160.0 слой совместимости конфигурации по умолчанию устанавливает `without_type_suffix: true` и `without_units: true`: на `/metrics` имена счётчиков и gauges совпадают с таблицей, гистограммы получают `_bucket`, `_sum`, `_count`. Это проверяется интеграционным тестом запущенного Collector. Явные `without_type_suffix: false` и `without_units: false` включат суффиксы `_total` и `_seconds`; при их изменении обновите PromQL.
+
+Конфигурация штатной внутренней телеметрии:
+
+```yaml
+service:
+  telemetry:
+    logs:
+      level: info
+      encoding: json
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+```
+
+Логи запуска/остановки пишутся на `info`, ошибки заданий API и downstream — на `error`, отклонённые Streaming-запросы — на `warn`. Для сводок успешных операций (число точек, отбор, длительность) и причин пропуска сбора установите `level: debug`. Используется штатный sampling логов Collector. Тела запросов и заголовки авторизации не логируются.
+
+В Compose порт опубликован на loopback: `http://localhost:8888/metrics`; переопределение — `OTELCOL_METRICS_PORT`. Логи: `docker compose logs -f otelcol-zabbix`. После изменения шаблона демо повторно запустите bootstrap для обновления сгенерированной конфигурации.
+
+Примеры PromQL для явного reader выше:
+
+```promql
+# Скорость приёма точек по ресиверу
+sum by (receiver) (rate(otelcol_receiver_accepted_metric_points[5m]))
+# Ошибки сбора в секунду
+rate(otelcol_receiver_zabbix_values_errors[5m])
+# p95 времени сбора/обработки запроса
+histogram_quantile(0.95, sum by (receiver, le) (rate(otelcol_receiver_zabbix_values_duration_bucket[5m])))
+# Возраст последнего успешного сбора (нулевое значение означает: успеха ещё не было)
+time() - otelcol_receiver_zabbix_values_last_success_timestamp
+```
+
+Источники подхода: [Collector receiverhelper](https://github.com/open-telemetry/opentelemetry-collector/blob/main/receiver/receiverhelper/obsreport.go), [Contrib webhookeventreceiver](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/receiver/webhookeventreceiver/receiver.go), [внутренняя телеметрия Collector](https://opentelemetry.io/docs/collector/internal-telemetry/).
+
+Примеры рабочего контейнера и Kubernetes предоставляют стандартную телеметрию Collector на порту 8888. Считайте её служебным интерфейсом без аутентификации и соответствующим образом ограничьте сетевой доступ.
+
+## Режим Streaming
+
+Zabbix [передаёт потоки данных во внешние системы](https://www.zabbix.com/documentation/7.4/en/manual/config/export/streaming), отправляя историю элементов на `POST /v1/history` с `Content-Type: application/x-ndjson`. Приёмник поддерживает числовые типы `0` и `3`; события не поддерживаются. Каждая строка — один объект, а не массив. Повторные образцы одного элемента сохраняются, включая наносекунды. Время вычисляется как `clock * 1000000000 + ns`: `ns=1000000000` соответствует следующей секунде. Неотрицательные значения `ns` больше секунды также допускаются, если итоговое время помещается в `int64`; отрицательные значения и переполнение пропускаются. Оба режима используют gauge типа double, поэтому беззнаковые целые больше 2^53 могут терять точность.
+
+Streaming преобразует каждую числовую запись непосредственно из запроса: имя метрики — `{prom.prefix}{sanitized_name}`, описание — `name`, временная метка — `clock * 1e9 + ns`, атрибуты идентификации — `host` (из `host.host`) и `itemid`. Нормализация имени следует правилам режима API, но использует отображаемое имя элемента, а не ключ. Постоянные метки записываются первыми; `host` и `itemid` перезаписывают совпадения. Каждая числовая запись должна содержать непустые `host.host` и `name`, а также идентификатор элемента, время, тип и значение. Нечисловая история игнорируется.
+
+**Ограничение совместимости:** без API-обогащения Streaming не предоставляет `item_key` и `hostid`. При `streaming.enrich_with_api: true` они берутся из кэша обнаружения по `itemid`. Переход с API на Streaming может потребовать изменения панелей, оповещений и запросов. Переименование элемента меняет имя метрики Streaming; знаки пунктуации могут приводить к коллизиям нормализованных имён, различаемым по `host`/`itemid`. При одновременной работе обоих режимов используйте разные префиксы. `host.name`, группы и `item_tags` передаются в атрибутах при `metadata.enabled: true`; полный контракт описан в [метаданных](metadata.md).
+
+**Без API-обогащения** учётные данные API, снимок обнаружения, кэш перечня элементов и задачи по расписанию не используются. Ранее неизвестные элементы принимаются сразу. Регулярные выражения фильтров API и лимиты отбора на узел не применяются. Для выбора отправляемых данных настройте фильтры тегов и типов значений в коннекторе Zabbix. В режиме Streaming приёмник не ограничивает число известных элементов на узел; ограничения размера HTTP и числа записей/сеансов коннектора ограничивают отдельные запросы и нагрузку.
+
+Перед передачей разбирается весь запрос. Строки с некорректным JSON, отсутствующими обязательными полями истории, недопустимыми числовыми значениями или временными метками пропускаются; корректные числовые строки передаются дальше. Пропуски учитываются в счётчике `otelcol_receiver_zabbix_invalid_values`. Если между двумя корректными строками находится битый JSON, принимаются обе корректные строки и возвращается 200. Ошибки чтения или повреждённое сжатое тело возвращают 400 без отправки частичного пакета. Слишком большие запросы возвращают 413, неподдерживаемые тип содержимого или кодирование — 415, неверный метод — 405, а неверные учётные данные при настроенном Bearer-токене — 401. Поддерживаются несжатые тела (`Content-Encoding` отсутствует, `identity` или `none`), `gzip`, `zstd`, `deflate` (zlib) и `snappy` (блочный формат, как у VictoriaMetrics). Цепочки кодирований не поддерживаются. До передачи downstream проверяется чтение всего HTTP-тела, включая байты после конца сжатого потока; ошибки чтения, замеченные при read-ahead декомпрессора, также учитываются. Лимит `streaming.max_request_body_size` применяется отдельно к сжатому и распакованному телу; превышение любого из них возвращает 413 без отправки метрик. Для zstd дополнительно ограничено окно декодера до 64 MiB; превышение этого ограничения возвращает 400. Пустой запрос или запрос без числовых записей не вызывает обработчик метрик. Успешная обработка возвращает 200 с `{"response":"success"}`; ошибки следующих компонентов возвращают 503 без раскрытия подробностей ошибок или учётных данных. Запросы могут выполняться параллельно; настройте `max_records` коннектора и число одновременных сеансов с учётом памяти Collector и пропускной способности следующих компонентов. Лимит байтов ограничивает каждый запрос, а не общий объём памяти параллельных запросов.
+
+Настройте повторные попытки коннектора явно: по умолчанию Zabbix делает одну попытку. Успех подтверждает приём следующим обработчиком Collector, которым может быть буферизующий процессор; он не гарантирует надёжную запись в хранилище. На стороне приёмника нет постоянной очереди, дедупликации, догрузки истории или гарантии обработки ровно один раз. Повтор после потери ответа может дублировать образцы; исчерпание повторных попыток отправителя может привести к потере значений. При остановке приёмник корректно завершает HTTP-запросы в пределах срока остановки Collector и закрывает соединения, если срок истёк.
+
+HTTP-сервер не имеет собственной настройки TLS. Используйте доверенную частную сеть или обратный прокси с TLS и отдельный `streaming.token`, передаваемый через `${env:ZABBIX_STREAM_TOKEN}`. Приёмники Streaming без API-обогащения игнорируют все явные переопределения окружения API, включая `ZABBIX_TOKEN`. Для обогащения используется отдельный API-токен; он не заменяет `streaming.token`. Настройка коннектора описана в [руководстве по развёртыванию](deployment.md); также доступен [полный пример конфигурации Streaming](../configs/otelcol-streaming.yaml).

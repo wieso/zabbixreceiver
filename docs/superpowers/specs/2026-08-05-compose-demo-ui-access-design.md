@@ -1,92 +1,94 @@
-# Docker Compose Demo UI Access Design
+# Проектирование доступа к интерфейсам демонстрации Docker Compose
 
-Date: 2026-08-05
+> Исторический материал. [Статус и указатель](../README.md) · [Актуальная документация](../../README.md). Не используйте как инструкцию для текущей версии.
 
-## Objective
+Дата: 2026-08-05
 
-Make the existing Docker Compose demonstration directly inspectable from the
-host. After starting the demo, an operator must be able to open both the Zabbix
-web interface and the VictoriaMetrics query interface and observe the same
-demo counter as it travels through the Collector pipeline.
+## Цель
 
-## Scope
+Сделать существующую демонстрацию Docker Compose доступной для непосредственной
+проверки с хоста. После запуска демонстрации оператор должен иметь возможность
+открыть веб-интерфейс Zabbix и интерфейс запросов VictoriaMetrics и наблюдать
+один и тот же демонстрационный счётчик при его прохождении через конвейер Collector.
 
-The change is limited to the Compose deployment and its README instructions.
-It does not change the Collector distribution, the Zabbix receiver, metric
-mapping, demo bootstrap, or producer behavior.
+## Область изменений
 
-## Network Access
+Изменение ограничивается развёртыванием Compose и инструкциями в его README.
+Оно не меняет дистрибутив Collector, приёмник Zabbix, преобразование метрик,
+начальную настройку демонстрации или поведение генератора данных.
 
-The `zabbix-web` container publishes its port `8080` on host loopback. The
-`victoriametrics` container publishes its port `8428` on host loopback. The
-default host ports are also `8080` and `8428`.
+## Сетевой доступ
 
-Operators can avoid local port conflicts without editing `compose.yaml` by
-setting these environment variables when running the demo:
+Контейнер `zabbix-web` публикует порт `8080` на петлевом интерфейсе хоста.
+Контейнер `victoriametrics` публикует порт `8428` на петлевом интерфейсе хоста.
+Порты хоста по умолчанию — также `8080` и `8428`.
 
-| Variable | Default | Container port |
+Чтобы избежать конфликтов локальных портов без редактирования `compose.yaml`,
+оператор может задать при запуске демонстрации следующие переменные окружения:
+
+| Переменная | По умолчанию | Порт контейнера |
 | --- | --- | --- |
 | `ZABBIX_WEB_PORT` | `8080` | `8080` |
 | `VICTORIAMETRICS_PORT` | `8428` | `8428` |
 
-Published ports bind to `127.0.0.1` rather than all host interfaces because
-the demo uses well-known credentials and VictoriaMetrics has no authentication
-in this configuration.
+Публикуемые порты привязаны к `127.0.0.1`, а не ко всем интерфейсам хоста, поскольку
+демонстрация использует общеизвестные учётные данные, а VictoriaMetrics в этой
+конфигурации не использует аутентификацию.
 
-The shared `demo` bridge network explicitly uses `internal: false`. Docker
-networks with `internal: true` have no connection to host interfaces, so Docker
-Engine cannot activate host port forwarding for containers attached only to
-such a network. No backend service publishes a host port; changing the network
-mode therefore exposes only the two explicit loopback bindings above. Existing
-container-to-container addresses remain unchanged.
+Общая мостовая сеть `demo` явно использует `internal: false`. Сети Docker с
+`internal: true` не подключены к интерфейсам хоста, поэтому Docker Engine не может
+активировать перенаправление портов хоста для контейнеров, подключённых только к
+такой сети. Ни одна внутренняя служба не публикует порт на хосте; поэтому изменение
+режима сети открывает доступ только через две явно заданные привязки к петлевому
+интерфейсу, указанные выше. Существующие адреса для связи контейнеров не меняются.
 
-## Data Flow and UI Comparison
+## Поток данных и сравнение интерфейсов
 
-The existing producer sends an incrementing value to the Zabbix trapper item
-`demo.counter` on host `otel-demo-host` every five seconds. The Collector reads
-that item from the Zabbix API and writes it to VictoriaMetrics as
-`zabbix_demo_counter` with the existing identity labels.
+Существующий генератор каждые пять секунд отправляет увеличивающееся значение
+в элемент данных Zabbix trapper `demo.counter` на узле `otel-demo-host`. Collector
+читает этот элемент через API Zabbix и записывает его в VictoriaMetrics как
+`zabbix_demo_counter` с существующими идентифицирующими метками.
 
-The README will document:
+В README будут описаны:
 
-- Zabbix URL `http://127.0.0.1:8080/` and the Compose-only credentials
-  `Admin` / `zabbix`.
-- How to locate `demo.counter` for `otel-demo-host` in Zabbix latest data.
-- VictoriaMetrics VMUI URL `http://127.0.0.1:8428/vmui/` and the query
+- URL Zabbix `http://127.0.0.1:8080/` и учётные данные, предназначенные только
+  для Compose: `Admin` / `zabbix`.
+- Как найти `demo.counter` для `otel-demo-host` в последних данных Zabbix.
+- URL VMUI VictoriaMetrics `http://127.0.0.1:8428/vmui/` и запрос
   `zabbix_demo_counter{host="otel-demo-host",env="compose"}`.
-- How URLs change when either host-port environment variable is overridden.
-- The expected collection delay: the two interfaces represent the same source
-  item, but their latest displayed values may briefly differ by a collection
-  cycle while a newer Zabbix value is awaiting export.
+- Как изменяются URL при переопределении любой переменной окружения порта хоста.
+- Ожидаемая задержка сбора: оба интерфейса представляют один исходный элемент
+  данных, но последние отображаемые значения могут кратковременно различаться
+  на один цикл сбора, пока более новое значение Zabbix ожидает экспорта.
 
-## Failure Behavior
+## Поведение при сбоях
 
-Compose startup fails normally if a selected host port is already in use. The
-README directs the operator to choose an unused port through the corresponding
-environment variable and start the demo again. No automatic port discovery is
-introduced because it would make the browser URLs harder to predict.
+Если выбранный порт хоста уже занят, запуск Compose завершается обычной ошибкой.
+README предлагает оператору выбрать свободный порт через соответствующую
+переменную окружения и снова запустить демонстрацию. Автоматический поиск портов
+не добавляется, поскольку он сделал бы URL для браузера менее предсказуемыми.
 
-## Verification
+## Проверка
 
-Static verification expands and validates the Compose configuration, including
-`internal: false`, the default loopback bindings, and overridden host ports.
-Runtime verification:
+Статическая проверка раскрывает и проверяет конфигурацию Compose, включая
+`internal: false`, стандартные привязки к петлевому интерфейсу и переопределённые
+порты хоста. Проверка во время работы:
 
-1. Starts the complete demo with `make demo-up`.
-2. Runs `make demo-verify` to prove that a fresh, positive
-   `zabbix_demo_counter` sample reached VictoriaMetrics with the required
-   labels.
-3. Confirms that both published HTTP endpoints respond from the host.
-4. Uses the documented Zabbix and VictoriaMetrics views to inspect the source
-   item and exported series.
+1. Запускает полную демонстрацию командой `make demo-up`.
+2. Выполняет `make demo-verify`, чтобы подтвердить поступление в VictoriaMetrics
+   свежего положительного измерения `zabbix_demo_counter` с требуемыми метками.
+3. Подтверждает, что обе опубликованные HTTP-точки доступа отвечают с хоста.
+4. Использует описанные представления Zabbix и VictoriaMetrics для проверки
+   исходного элемента данных и экспортированного временного ряда.
 
-The existing verifier remains authoritative for the end-to-end metric contract;
-UI availability checks supplement it without duplicating its data assertions.
+Существующее средство проверки остаётся основным источником проверки сквозного
+контракта метрик; проверки доступности интерфейсов дополняют его, не дублируя
+проверки данных.
 
-## Non-Goals
+## Что не входит в цели
 
-- Exposing either UI to other machines.
-- Adding TLS or authentication to the demo endpoints.
-- Embedding a VictoriaMetrics datasource into Zabbix or building a combined
-  dashboard.
-- Requiring changes to `cmd/otelcol-zabbix/main.go`.
+- Открытие доступа к интерфейсам с других машин.
+- Добавление TLS или аутентификации к точкам доступа демонстрации.
+- Встраивание источника данных VictoriaMetrics в Zabbix или создание общей
+  панели мониторинга.
+- Изменения в `cmd/otelcol-zabbix/main.go`.

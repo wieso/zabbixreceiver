@@ -3,6 +3,7 @@
 set -euo pipefail
 
 version=${VERSION:-}
+govulncheck_version=${GOVULNCHECK_VERSION:-v1.8.0}
 if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "VERSION must match vMAJOR.MINOR.PATCH, got: ${version:-<empty>}" >&2
   exit 1
@@ -30,13 +31,19 @@ for target in "${target_specs[@]}"; do
 
   CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build \
     -trimpath \
-    -ldflags="-s -w -X main.version=$version" \
+    -ldflags="-w -X main.version=$version" \
     -o "$package_dir/otelcol-zabbix" \
     "$root_dir/cmd/otelcol-zabbix"
 
+  # Scan the actual target binary, including its embedded standard library.
+  go run "golang.org/x/vuln/cmd/govulncheck@$govulncheck_version" -mode=binary "$package_dir/otelcol-zabbix"
+
   cp "$root_dir/configs/otelcol.yaml" "$package_dir/configs/otelcol.yaml"
+  cp "$root_dir/configs/otelcol-streaming.yaml" "$package_dir/configs/otelcol-streaming.yaml"
+  cp "$root_dir/configs/otelcol-streaming-enriched.yaml" "$package_dir/configs/otelcol-streaming-enriched.yaml"
   cp "$root_dir/README.md" "$package_dir/README.md"
   cp "$root_dir/docs/configuration.md" "$package_dir/docs/configuration.md"
+  cp "$root_dir/docs/metadata.md" "$package_dir/docs/metadata.md"
   cp "$root_dir/docs/deployment.md" "$package_dir/docs/deployment.md"
 
   chmod 0755 "$package_dir/otelcol-zabbix"
@@ -72,6 +79,7 @@ if [[ "$actual_asset_list" != "$expected_asset_list" ]]; then
   exit 1
 fi
 
+host_os=$(uname -s)
 host_arch=$(uname -m)
 for target in "${target_specs[@]}"; do
   arch=${target#*/}
@@ -82,8 +90,11 @@ for target in "${target_specs[@]}"; do
     "$archive_base/README.md" \
     "$archive_base/configs" \
     "$archive_base/configs/otelcol.yaml" \
+    "$archive_base/configs/otelcol-streaming.yaml" \
+    "$archive_base/configs/otelcol-streaming-enriched.yaml" \
     "$archive_base/docs" \
     "$archive_base/docs/configuration.md" \
+    "$archive_base/docs/metadata.md" \
     "$archive_base/docs/deployment.md" \
     "$archive_base/otelcol-zabbix" | sort)
   actual_members=$(tar -tzf "$archive_path" | sed 's#/$##' | sort)
@@ -103,8 +114,8 @@ for target in "${target_specs[@]}"; do
     amd64) printf '%s\n' "$file_output" | grep -Eq 'ELF 64-bit.*x86-64' ;;
     arm64) printf '%s\n' "$file_output" | grep -Eq 'ELF 64-bit.*ARM aarch64' ;;
   esac
-  if [[ "$host_arch" == "x86_64" && "$arch" == "amd64" ]] || \
-     [[ "$host_arch" == "aarch64" && "$arch" == "arm64" ]]; then
+  if [[ "$host_os" == "Linux" ]] && { [[ "$host_arch" == "x86_64" && "$arch" == "amd64" ]] || \
+     [[ "$host_arch" == "aarch64" && "$arch" == "arm64" ]]; }; then
     "$binary" --version | grep -Fq "$version"
     "$binary" components >/dev/null
   fi

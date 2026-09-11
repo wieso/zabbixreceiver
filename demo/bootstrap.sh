@@ -99,6 +99,21 @@ if [ -z "$item_id" ]; then
 	item_id=$(printf '%s\n' "$created_item" | jq -er '.itemids[0]')
 fi
 
+# Scope the connector to this demo item, including on repeated bootstrap runs.
+item_update=$(jq -nc --arg item_id "$item_id" '{itemid:$item_id,tags:[{tag:"otel-demo",value:"true"}]}')
+rpc_session item.update "$item_update" >/dev/null
+stream_token=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
+connectors=$(rpc_session connector.get '{"output":["connectorid"],"filter":{"name":["otel-demo-streaming"]}}')
+connector_id=$(printf '%s\n' "$connectors" | jq -r '.[0].connectorid // empty')
+connector_params=$(jq -nc --arg token "$stream_token" \
+ '{name:"otel-demo-streaming",url:"http://otelcol-zabbix:8081/v1/history",data_type:0,item_value_type:9,authtype:5,token:$token,max_records:100,max_senders:1,max_attempts:5,attempt_interval:"5s",timeout:"10s",tags:[{tag:"otel-demo",operator:0,value:"true"}]}')
+if [ -n "$connector_id" ]; then
+ connector_params=$(printf '%s\n' "$connector_params" | jq --arg id "$connector_id" '. + {connectorid:$id}')
+ rpc_session connector.update "$connector_params" >/dev/null
+else
+ rpc_session connector.create "$connector_params" >/dev/null
+fi
+
 user_get_params=$(jq -nc --arg username "$ZABBIX_USERNAME" \
 	'{output:["userid"],filter:{username:[$username]}}')
 users=$(rpc_session user.get "$user_get_params")
@@ -128,6 +143,11 @@ rm -f /generated/ready /generated/otelcol.yaml
 umask 0377
 while IFS= read -r line || [ -n "$line" ]; do
 	case "$line" in
+		*'@@STREAM_TOKEN@@'*)
+			prefix=${line%%'@@STREAM_TOKEN@@'*}
+			suffix=${line#*'@@STREAM_TOKEN@@'}
+			printf '%s%s%s\n' "$prefix" "$stream_token" "$suffix"
+			;;
 		*'@@ZABBIX_TOKEN@@'*)
 			prefix=${line%%'@@ZABBIX_TOKEN@@'*}
 			suffix=${line#*'@@ZABBIX_TOKEN@@'}

@@ -32,6 +32,9 @@ data:
         endpoint: ${env:VICTORIAMETRICS_REMOTE_WRITE_URL}
     service:
       telemetry:
+        logs:
+          level: info
+          encoding: json
         metrics:
           readers:
             - pull:

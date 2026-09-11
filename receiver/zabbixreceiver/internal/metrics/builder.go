@@ -12,9 +12,10 @@ import (
 
 // Config controls the OpenTelemetry metric representation of Zabbix items.
 type Config struct {
-	Prefix      string
-	ConstLabels map[string]string
-	ScopeName   string
+	Prefix          string
+	ConstLabels     map[string]string
+	ScopeName       string
+	MetadataEnabled bool
 }
 
 // Stats reports how many Zabbix values were converted, malformed, or unmatched.
@@ -72,6 +73,9 @@ func Build(items []discovery.ItemMeta, values []zabbix.Value, config Config) (pm
 		point.Attributes().PutStr("hostid", item.HostID)
 		point.Attributes().PutStr("item_key", item.Key)
 		point.Attributes().PutStr("itemid", item.ID)
+		if config.MetadataEnabled {
+			PutMetadata(point.Attributes(), item.Metadata)
+		}
 		stats.Emitted++
 	}
 	return metrics, stats

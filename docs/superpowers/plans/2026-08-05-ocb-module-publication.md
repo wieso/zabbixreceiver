@@ -1,58 +1,60 @@
-# OCB Module Publication Implementation Plan
+# План реализации публикации модуля OCB
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> Исторический материал. [Статус и указатель](../README.md) · [Актуальная документация](../../README.md). Не используйте как инструкцию для текущей версии.
 
-**Goal:** Publish the existing Zabbix receiver as an independently versioned Collector Builder component at `github.com/wieso/zabbixreceiver/receiver/zabbixreceiver` while preserving the repository's ready-made distribution and giving the remote repository exactly one commit.
+> **Для агентов-исполнителей:** ОБЯЗАТЕЛЬНЫЙ ВСПОМОГАТЕЛЬНЫЙ НАВЫК: используйте superpowers:subagent-driven-development (рекомендуется) или superpowers:executing-plans для последовательной реализации задач этого плана. Для отслеживания шагов используется синтаксис флажков (`- [ ]`).
 
-**Architecture:** `receiver/zabbixreceiver` becomes a nested Go module and absorbs the three private packages it uses. The root Go module retains the executable distribution and consumes the receiver through a local `replace`. Checked-in local and remote OCB manifests prove both the unpublished workspace and the published `v0.1.0` submodule tag.
+**Цель:** опубликовать существующий приёмник Zabbix как компонент Collector Builder с независимыми версиями по пути `github.com/wieso/zabbixreceiver/receiver/zabbixreceiver`, сохранив готовую сборку репозитория и ровно один коммит в удалённом репозитории.
 
-**Tech Stack:** Go 1.25+, OpenTelemetry Collector and Collector Contrib v0.154.0, stable Collector modules v1.60.0, OpenTelemetry Go v1.44.0, Collector Builder v0.154.0, Git, GitHub, Docker, GitHub Actions.
+**Архитектура:** `receiver/zabbixreceiver` становится вложенным модулем Go и включает три используемых им внутренних пакета. Корневой модуль Go сохраняет исполняемую сборку и подключает приёмник через локальный `replace`. Локальный и удалённый манифесты OCB в репозитории проверяют как неопубликованную рабочую область, так и опубликованный тег подмодуля `v0.1.0`.
 
-## Global Constraints
+**Технологии:** Go 1.25+, OpenTelemetry Collector и Collector Contrib v0.154.0, стабильные модули Collector v1.60.0, OpenTelemetry Go v1.44.0, Collector Builder v0.154.0, Git, GitHub, Docker, GitHub Actions.
 
-- The public receiver module path is exactly `github.com/wieso/zabbixreceiver/receiver/zabbixreceiver`.
-- The public receiver component type and factory remain `zabbix` and `zabbixreceiver.NewFactory`.
-- The first module version is `v0.1.0`, published with tag `receiver/zabbixreceiver/v0.1.0`.
-- The tested compatibility line is Collector/Contrib `v0.154.0` with stable Collector modules `v1.60.0`.
-- Preserve every receiver YAML key, default, environment override, scheduling rule, metric mapping rule, authentication behavior, and runtime failure behavior.
-- The nested receiver module must not depend on the root `github.com/wieso/zabbixreceiver` module.
-- The repository license is Apache License 2.0.
-- The remote `main` branch must have exactly one root commit and no parent commit.
-- Push only remote `main` and tag `receiver/zabbixreceiver/v0.1.0`; do not push local backup history or unrelated refs.
-- If the target remote is no longer empty immediately before publication, stop without overwriting it.
+## Общие ограничения
+
+- Публичный путь модуля приёмника — строго `github.com/wieso/zabbixreceiver/receiver/zabbixreceiver`.
+- Публичный тип компонента приёмника и фабрика остаются `zabbix` и `zabbixreceiver.NewFactory`.
+- Первая версия модуля — `v0.1.0`, опубликованная с тегом `receiver/zabbixreceiver/v0.1.0`.
+- Проверенная линия совместимости — Collector/Contrib `v0.154.0` со стабильными модулями Collector `v1.60.0`.
+- Сохраните все YAML-ключи приёмника, значения по умолчанию, переопределения через переменные окружения, правила расписания и сопоставления метрик, поведение аутентификации и поведение при сбоях во время работы.
+- Вложенный модуль приёмника не должен зависеть от корневого модуля `github.com/wieso/zabbixreceiver`.
+- Лицензия репозитория — Apache License 2.0.
+- Удалённая ветка `main` должна содержать ровно один корневой коммит без родительского коммита.
+- Отправляйте только удалённую ветку `main` и тег `receiver/zabbixreceiver/v0.1.0`; не отправляйте локальную резервную историю или посторонние ссылки Git.
+- Если непосредственно перед публикацией целевой удалённый репозиторий уже не пуст, остановитесь, не перезаписывая его.
 
 ---
 
-### Task 1: Create the Independent Receiver Module
+### Задача 1: создать независимый модуль приёмника
 
-**Files:**
-- Create: `receiver/zabbixreceiver/go.mod`
-- Create: `receiver/zabbixreceiver/go.sum`
-- Move: `internal/zabbix/*.go` to `receiver/zabbixreceiver/internal/zabbix/*.go`
-- Move: `internal/discovery/*.go` to `receiver/zabbixreceiver/internal/discovery/*.go`
-- Move: `internal/metrics/*.go` to `receiver/zabbixreceiver/internal/metrics/*.go`
-- Modify: `receiver/zabbixreceiver/factory.go`
-- Modify: `receiver/zabbixreceiver/receiver.go`
-- Modify: `receiver/zabbixreceiver/receiver_test.go`
-- Modify: `receiver/zabbixreceiver/telemetry_test.go`
-- Modify: `receiver/zabbixreceiver/internal/discovery/select.go`
-- Modify: `receiver/zabbixreceiver/internal/discovery/select_test.go`
-- Modify: `receiver/zabbixreceiver/internal/metrics/builder.go`
-- Modify: `receiver/zabbixreceiver/internal/metrics/builder_test.go`
-- Modify: `cmd/otelcol-zabbix/components.go`
-- Modify: `go.mod`
-- Modify: `go.sum`
-- Test: `internal/packaging/assets_test.go`
+**Файлы:**
+- Создать: `receiver/zabbixreceiver/go.mod`
+- Создать: `receiver/zabbixreceiver/go.sum`
+- Переместить: `internal/zabbix/*.go` в `receiver/zabbixreceiver/internal/zabbix/*.go`
+- Переместить: `internal/discovery/*.go` в `receiver/zabbixreceiver/internal/discovery/*.go`
+- Переместить: `internal/metrics/*.go` в `receiver/zabbixreceiver/internal/metrics/*.go`
+- Изменить: `receiver/zabbixreceiver/factory.go`
+- Изменить: `receiver/zabbixreceiver/receiver.go`
+- Изменить: `receiver/zabbixreceiver/receiver_test.go`
+- Изменить: `receiver/zabbixreceiver/telemetry_test.go`
+- Изменить: `receiver/zabbixreceiver/internal/discovery/select.go`
+- Изменить: `receiver/zabbixreceiver/internal/discovery/select_test.go`
+- Изменить: `receiver/zabbixreceiver/internal/metrics/builder.go`
+- Изменить: `receiver/zabbixreceiver/internal/metrics/builder_test.go`
+- Изменить: `cmd/otelcol-zabbix/components.go`
+- Изменить: `go.mod`
+- Изменить: `go.sum`
+- Тест: `internal/packaging/assets_test.go`
 
-**Interfaces:**
-- Produces: Go module `github.com/wieso/zabbixreceiver/receiver/zabbixreceiver` at version-compatible source state for `v0.1.0`.
-- Produces: `func NewFactory() receiver.Factory` at the nested module root.
-- Consumes: Collector component, configuration, consumer, pdata, and receiver APIs at `v1.60.0`; `receivertest` at `v0.154.0`.
-- Preserves: root distribution import of `zabbixreceiver.NewFactory` through a local module replacement.
+**Интерфейсы:**
+- Результат: модуль Go `github.com/wieso/zabbixreceiver/receiver/zabbixreceiver` с исходным кодом, совместимым с версией `v0.1.0`.
+- Результат: `func NewFactory() receiver.Factory` в корне вложенного модуля.
+- Зависимости: API компонентов, конфигурации, потребителей, pdata и приёмников Collector версии `v1.60.0`; `receivertest` версии `v0.154.0`.
+- Сохраняется: импорт `zabbixreceiver.NewFactory` корневой сборкой через локальную замену модуля.
 
-- [ ] **Step 1: Write the failing module-boundary contract test**
+- [ ] **Шаг 1: написать падающий тест контракта границ модуля**
 
-Add this test to `internal/packaging/assets_test.go`:
+Добавьте этот тест в `internal/packaging/assets_test.go`:
 
 ```go
 func TestReceiverModuleContract(t *testing.T) {
@@ -84,19 +86,19 @@ func TestReceiverModuleContract(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run the contract test and confirm the red state**
+- [ ] **Шаг 2: запустить тест контракта и подтвердить его падение**
 
-Run:
+Выполните:
 
 ```bash
 go test ./internal/packaging -run TestReceiverModuleContract -count=1
 ```
 
-Expected: FAIL because `receiver/zabbixreceiver/go.mod` does not exist.
+Ожидаемый результат: FAIL, поскольку `receiver/zabbixreceiver/go.mod` не существует.
 
-- [ ] **Step 3: Create the nested module manifest**
+- [ ] **Шаг 3: создать манифест вложенного модуля**
 
-Create `receiver/zabbixreceiver/go.mod` with this direct dependency block; `go mod tidy` will add the exact transitive block and `go.sum`:
+Создайте `receiver/zabbixreceiver/go.mod` с этим блоком прямых зависимостей; `go mod tidy` добавит точный блок транзитивных зависимостей и `go.sum`:
 
 ```go
 module github.com/wieso/zabbixreceiver/receiver/zabbixreceiver
@@ -117,9 +119,9 @@ require (
 )
 ```
 
-- [ ] **Step 4: Move private packages under the nested module**
+- [ ] **Шаг 4: переместить внутренние пакеты во вложенный модуль**
 
-Use file-preserving moves so Git records renames:
+Перемещайте файлы с сохранением содержимого, чтобы Git распознал переименования:
 
 ```text
 internal/zabbix      -> receiver/zabbixreceiver/internal/zabbix
@@ -127,11 +129,11 @@ internal/discovery   -> receiver/zabbixreceiver/internal/discovery
 internal/metrics     -> receiver/zabbixreceiver/internal/metrics
 ```
 
-Do not move `internal/packaging`; it tests repository-level assets and remains in the root module.
+Не перемещайте `internal/packaging`: он проверяет ресурсы уровня репозитория и остаётся в корневом модуле.
 
-- [ ] **Step 5: Rewrite receiver-private imports**
+- [ ] **Шаг 5: переписать импорты внутренних пакетов приёмника**
 
-In all moved packages and receiver source/tests, replace the three old imports with the nested module equivalents:
+Во всех перемещённых пакетах, исходном коде и тестах приёмника замените три старых импорта эквивалентами из вложенного модуля:
 
 ```go
 "github.com/wieso/zabbixreceiver/receiver/zabbixreceiver/internal/discovery"
@@ -139,23 +141,23 @@ otelmetrics "github.com/wieso/zabbixreceiver/receiver/zabbixreceiver/internal/me
 "github.com/wieso/zabbixreceiver/receiver/zabbixreceiver/internal/zabbix"
 ```
 
-The alias `otelmetrics` remains only where the local package name would otherwise be ambiguous.
+Псевдоним `otelmetrics` остаётся только там, где локальное имя пакета иначе было бы неоднозначным.
 
-- [ ] **Step 6: Point the root distribution at the public receiver module**
+- [ ] **Шаг 6: подключить корневую сборку к публичному модулю приёмника**
 
-Change `cmd/otelcol-zabbix/components.go` to import:
+Измените импорт в `cmd/otelcol-zabbix/components.go` на:
 
 ```go
 "github.com/wieso/zabbixreceiver/receiver/zabbixreceiver"
 ```
 
-Change the root `go.mod` module line to:
+Измените строку модуля в корневом `go.mod` на:
 
 ```go
 module github.com/wieso/zabbixreceiver
 ```
 
-Update its direct dependencies to the v0.154.0/v1.60.0 line and include:
+Обновите прямые зависимости до линии v0.154.0/v1.60.0 и включите:
 
 ```go
 require (
@@ -177,9 +179,9 @@ require (
 replace github.com/wieso/zabbixreceiver/receiver/zabbixreceiver => ./receiver/zabbixreceiver
 ```
 
-- [ ] **Step 7: Resolve both module graphs**
+- [ ] **Шаг 7: разрешить оба графа модулей**
 
-Run:
+Выполните:
 
 ```bash
 cd receiver/zabbixreceiver
@@ -188,11 +190,11 @@ cd ../..
 go mod tidy
 ```
 
-Expected: both commands succeed; the nested `go.mod` has no requirement on `github.com/wieso/zabbixreceiver`.
+Ожидаемый результат: обе команды завершаются успешно; вложенный `go.mod` не содержит зависимости от `github.com/wieso/zabbixreceiver`.
 
-- [ ] **Step 8: Run focused and complete module tests**
+- [ ] **Шаг 8: запустить целевые и полные тесты модулей**
 
-Run:
+Выполните:
 
 ```bash
 cd receiver/zabbixreceiver
@@ -202,45 +204,45 @@ go test ./internal/packaging -run TestReceiverModuleContract -count=1
 go test ./... -count=1
 ```
 
-Expected: PASS. The root `./...` traversal stops at the nested module boundary, and the explicit nested invocation covers receiver and private-package tests.
+Ожидаемый результат: PASS. Корневой обход `./...` останавливается на границе вложенного модуля, а явный запуск во вложенном модуле охватывает тесты приёмника и внутренних пакетов.
 
-- [ ] **Step 9: Confirm obsolete import paths are gone**
+- [ ] **Шаг 9: убедиться, что устаревшие пути импорта удалены**
 
-Run:
+Выполните:
 
 ```bash
 rg -n 'github\.com/aleksandr/zabbix-otel|github\.com/wieso/zabbixreceiver/internal/' --glob '*.go' --glob 'go.mod'
 ```
 
-Expected: no output.
+Ожидаемый результат: вывод отсутствует.
 
-- [ ] **Step 10: Commit the module split**
+- [ ] **Шаг 10: закоммитить разделение модулей**
 
 ```bash
 git add -A -- go.mod go.sum cmd/otelcol-zabbix/components.go receiver/zabbixreceiver internal/packaging/assets_test.go internal/zabbix internal/discovery internal/metrics
 git commit -m "refactor: publish receiver as nested Go module"
 ```
 
-Expected: the deleted root-private paths and added nested-private paths are recorded, preferably as renames. This local commit will later be folded into the publication root commit.
+Ожидаемый результат: удалённые пути внутренних пакетов корня и добавленные пути вложенного модуля зафиксированы, желательно как переименования. Этот локальный коммит позже будет включён в корневой коммит публикации.
 
 ---
 
-### Task 2: Make All Build Automation Multi-Module Aware
+### Задача 2: адаптировать всю автоматизацию сборки к нескольким модулям
 
-**Files:**
-- Modify: `internal/packaging/assets_test.go`
-- Modify: `Makefile`
-- Modify: `Dockerfile`
-- Modify: `.github/workflows/ci.yml`
+**Файлы:**
+- Изменить: `internal/packaging/assets_test.go`
+- Изменить: `Makefile`
+- Изменить: `Dockerfile`
+- Изменить: `.github/workflows/ci.yml`
 
-**Interfaces:**
-- Produces: `make download`, `make tidy`, `make test`, `make test-race`, and `make vet` that cover both modules.
-- Produces: a Docker build that exposes the nested manifest before root dependency download.
-- Produces: CI cache and verification steps keyed by both `go.sum` files.
+**Интерфейсы:**
+- Результат: `make download`, `make tidy`, `make test`, `make test-race` и `make vet`, охватывающие оба модуля.
+- Результат: сборка Docker, в которой вложенный манифест доступен до загрузки зависимостей корня.
+- Результат: кеш CI и шаги проверки, учитывающие оба файла `go.sum`.
 
-- [ ] **Step 1: Write failing dual-module automation assertions**
+- [ ] **Шаг 1: написать падающие проверки автоматизации для двух модулей**
 
-Add this test to `internal/packaging/assets_test.go`:
+Добавьте этот тест в `internal/packaging/assets_test.go`:
 
 ```go
 func TestDualModuleAutomationContract(t *testing.T) {
@@ -266,7 +268,7 @@ func TestDualModuleAutomationContract(t *testing.T) {
 }
 ```
 
-Extend `TestDockerfileContract` with:
+Дополните `TestDockerfileContract` следующим кодом:
 
 ```go
 if !strings.Contains(dockerfile, "COPY receiver/zabbixreceiver/go.mod receiver/zabbixreceiver/go.sum ./receiver/zabbixreceiver/") {
@@ -274,19 +276,19 @@ if !strings.Contains(dockerfile, "COPY receiver/zabbixreceiver/go.mod receiver/z
 }
 ```
 
-- [ ] **Step 2: Run the automation contract tests and confirm failure**
+- [ ] **Шаг 2: запустить тесты контракта автоматизации и подтвердить падение**
 
-Run:
+Выполните:
 
 ```bash
 go test ./internal/packaging -run 'Test(DualModuleAutomation|Dockerfile)Contract' -count=1
 ```
 
-Expected: FAIL with missing Makefile, CI, and Dockerfile clauses.
+Ожидаемый результат: FAIL из-за отсутствующих элементов Makefile, CI и Dockerfile.
 
-- [ ] **Step 3: Extend the Makefile verification surface**
+- [ ] **Шаг 3: расширить проверки в Makefile**
 
-Use these targets and preserve the existing build/demo targets:
+Используйте эти цели, сохранив существующие цели сборки и демонстрации:
 
 ```make
 .PHONY: fmt download tidy test test-race vet build validate-config docker-build compose-config demo-up demo-verify demo-down
@@ -315,9 +317,9 @@ vet:
 	cd receiver/zabbixreceiver && go vet ./...
 ```
 
-- [ ] **Step 4: Make Docker dependency download aware of the nested manifest**
+- [ ] **Шаг 4: учесть вложенный манифест при загрузке зависимостей Docker**
 
-The start of the Docker build stage must be:
+Начало этапа сборки Docker должно выглядеть так:
 
 ```dockerfile
 WORKDIR /src
@@ -327,11 +329,11 @@ COPY go.mod go.sum ./
 RUN go mod download
 ```
 
-This gives the root module's local `replace` a valid module directory before `go mod download` runs.
+Это предоставляет локальному `replace` корневого модуля корректный каталог модуля до запуска `go mod download`.
 
-- [ ] **Step 5: Update CI caching and dependency checks**
+- [ ] **Шаг 5: обновить кеширование CI и проверки зависимостей**
 
-Under `actions/setup-go@v6`, set:
+В `actions/setup-go@v6` задайте:
 
 ```yaml
 cache-dependency-path: |
@@ -339,7 +341,7 @@ cache-dependency-path: |
   receiver/zabbixreceiver/go.sum
 ```
 
-Replace the dependency command with `make download`. Before formatting, add:
+Замените команду работы с зависимостями на `make download`. Перед форматированием добавьте:
 
 ```yaml
 - name: Enforce tidy module files
@@ -349,11 +351,11 @@ Replace the dependency command with `make download`. Before formatting, add:
     git diff --exit-code
 ```
 
-The existing `make test`, `make test-race`, and `make vet` steps now cover both modules.
+Существующие шаги `make test`, `make test-race` и `make vet` теперь охватывают оба модуля.
 
-- [ ] **Step 6: Run the automation checks**
+- [ ] **Шаг 6: запустить проверки автоматизации**
 
-Run:
+Выполните:
 
 ```bash
 make tidy
@@ -364,9 +366,9 @@ make vet
 go test ./internal/packaging -run 'Test(DualModuleAutomation|Dockerfile)Contract' -count=1
 ```
 
-Expected: PASS.
+Ожидаемый результат: PASS.
 
-- [ ] **Step 7: Commit multi-module automation**
+- [ ] **Шаг 7: закоммитить автоматизацию для нескольких модулей**
 
 ```bash
 git add Makefile Dockerfile .github/workflows/ci.yml internal/packaging/assets_test.go go.mod go.sum receiver/zabbixreceiver/go.mod receiver/zabbixreceiver/go.sum
@@ -375,25 +377,25 @@ git commit -m "build: verify root and receiver modules"
 
 ---
 
-### Task 3: Add Local and Published Collector Builder Fixtures
+### Задача 3: добавить локальные и опубликованные примеры Collector Builder
 
-**Files:**
-- Create: `examples/ocb/builder-config.yaml`
-- Create: `examples/ocb/otelcol.yaml`
-- Create: `testdata/ocb/builder-config.yaml`
-- Modify: `internal/packaging/assets_test.go`
-- Modify: `Makefile`
-- Modify: `.github/workflows/ci.yml`
-- Modify: `.gitignore`
+**Файлы:**
+- Создать: `examples/ocb/builder-config.yaml`
+- Создать: `examples/ocb/otelcol.yaml`
+- Создать: `testdata/ocb/builder-config.yaml`
+- Изменить: `internal/packaging/assets_test.go`
+- Изменить: `Makefile`
+- Изменить: `.github/workflows/ci.yml`
+- Изменить: `.gitignore`
 
-**Interfaces:**
-- Produces: copy-ready remote manifest with no standalone component `path` key, `replace`, or unpublished import override.
-- Produces: local-only manifest with `path: ./receiver/zabbixreceiver`.
-- Produces: `make verify-ocb-local`, which builds with Builder v0.154.0, checks component inventory, and validates runtime YAML.
+**Интерфейсы:**
+- Результат: готовый к копированию удалённый манифест без отдельного ключа `path` компонента, `replace` или переопределения неопубликованного импорта.
+- Результат: манифест только для локального использования с `path: ./receiver/zabbixreceiver`.
+- Результат: `make verify-ocb-local`, выполняющий сборку с Builder v0.154.0, проверку состава компонентов и валидацию YAML рабочей конфигурации.
 
-- [ ] **Step 1: Write the failing OCB asset contract test**
+- [ ] **Шаг 1: написать падающий тест контракта ресурсов OCB**
 
-Add this test to `internal/packaging/assets_test.go`:
+Добавьте этот тест в `internal/packaging/assets_test.go`:
 
 ```go
 func TestOCBExamplesContract(t *testing.T) {
@@ -424,19 +426,19 @@ func TestOCBExamplesContract(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run the OCB asset test and confirm failure**
+- [ ] **Шаг 2: запустить тест ресурсов OCB и подтвердить падение**
 
-Run:
+Выполните:
 
 ```bash
 go test ./internal/packaging -run TestOCBExamplesContract -count=1
 ```
 
-Expected: FAIL because the OCB example files do not exist.
+Ожидаемый результат: FAIL, поскольку файлы примеров OCB не существуют.
 
-- [ ] **Step 3: Create the published Builder manifest**
+- [ ] **Шаг 3: создать манифест Builder для опубликованного модуля**
 
-Create `examples/ocb/builder-config.yaml`:
+Создайте `examples/ocb/builder-config.yaml`:
 
 ```yaml
 dist:
@@ -464,9 +466,9 @@ telemetry:
   import: go.opentelemetry.io/collector/service/telemetry/otelconftelemetry
 ```
 
-- [ ] **Step 4: Create the local Builder fixture**
+- [ ] **Шаг 4: создать локальный тестовый пример Builder**
 
-Create `testdata/ocb/builder-config.yaml` with the same component versions but a separate output and the one local override:
+Создайте `testdata/ocb/builder-config.yaml` с теми же версиями компонентов, но отдельным каталогом вывода и одним локальным переопределением:
 
 ```yaml
 dist:
@@ -495,9 +497,9 @@ telemetry:
   import: go.opentelemetry.io/collector/service/telemetry/otelconftelemetry
 ```
 
-- [ ] **Step 5: Create the minimal runtime configuration**
+- [ ] **Шаг 5: создать минимальную рабочую конфигурацию**
 
-Create `examples/ocb/otelcol.yaml`:
+Создайте `examples/ocb/otelcol.yaml`:
 
 ```yaml
 receivers:
@@ -521,9 +523,9 @@ service:
       exporters: [debug]
 ```
 
-- [ ] **Step 6: Add the local OCB verification target**
+- [ ] **Шаг 6: добавить цель локальной проверки OCB**
 
-Add variables, the phony target, and recipe to `Makefile`:
+Добавьте переменные, фиктивную цель и рецепт в `Makefile`:
 
 ```make
 OCB_VERSION ?= v0.154.0
@@ -536,11 +538,11 @@ verify-ocb-local:
 	ZABBIX_URL=http://zabbix.example/api_jsonrpc.php ZABBIX_TOKEN=dummy-token $(OCB_LOCAL_OUTPUT)/otelcol-zabbix validate --config examples/ocb/otelcol.yaml
 ```
 
-Add `verify-ocb-local` to `.PHONY`.
+Добавьте `verify-ocb-local` в `.PHONY`.
 
-- [ ] **Step 7: Ignore generated and editor-local paths**
+- [ ] **Шаг 7: исключить генерируемые и локальные пути редактора**
 
-Append to `.gitignore`:
+Добавьте в `.gitignore`:
 
 ```gitignore
 .idea/
@@ -548,27 +550,27 @@ Append to `.gitignore`:
 otelcol-zabbix-dist/
 ```
 
-- [ ] **Step 8: Add OCB verification to CI**
+- [ ] **Шаг 8: добавить проверку OCB в CI**
 
-After the ordinary Collector configuration validation step, add:
+После обычного шага валидации конфигурации Collector добавьте:
 
 ```yaml
 - name: Verify Collector Builder integration
   run: make verify-ocb-local
 ```
 
-- [ ] **Step 9: Run local Builder verification**
+- [ ] **Шаг 9: запустить локальную проверку Builder**
 
-Run:
+Выполните:
 
 ```bash
 go test ./internal/packaging -run TestOCBExamplesContract -count=1
 make verify-ocb-local
 ```
 
-Expected: the target creates its ignored output parent; Builder v0.154.0 completes strict version checks and compiles `.ocb/local/otelcol-zabbix`; `components` contains `zabbix`; `validate` exits successfully without contacting the placeholder endpoint.
+Ожидаемый результат: цель создаёт игнорируемый родительский каталог вывода; Builder v0.154.0 успешно выполняет строгие проверки версий и компилирует `.ocb/local/otelcol-zabbix`; `components` содержит `zabbix`; `validate` завершается успешно без обращения к адресу-заглушке.
 
-- [ ] **Step 10: Commit Builder integration assets**
+- [ ] **Шаг 10: закоммитить ресурсы интеграции Builder**
 
 ```bash
 git add .gitignore Makefile .github/workflows/ci.yml examples/ocb testdata/ocb internal/packaging/assets_test.go
@@ -577,23 +579,23 @@ git commit -m "test: verify Collector Builder integration"
 
 ---
 
-### Task 4: Add Public Documentation and Apache-2.0 Licensing
+### Задача 4: добавить публичную документацию и лицензию Apache-2.0
 
-**Files:**
-- Create: `LICENSE`
-- Create: `receiver/zabbixreceiver/README.md`
-- Modify: `README.md`
-- Modify: `docs/superpowers/specs/2026-08-05-zabbix-opentelemetry-receiver-design.md`
-- Modify: `internal/packaging/assets_test.go`
+**Файлы:**
+- Создать: `LICENSE`
+- Создать: `receiver/zabbixreceiver/README.md`
+- Изменить: `README.md`
+- Изменить: `docs/superpowers/specs/2026-08-05-zabbix-opentelemetry-receiver-design.md`
+- Изменить: `internal/packaging/assets_test.go`
 
-**Interfaces:**
-- Produces: copy-ready OCB instructions and a component-focused configuration guide.
-- Produces: canonical Apache License 2.0 grant at repository root.
-- Preserves: detailed configuration, deployment, security, and demo documentation already linked by the root README.
+**Интерфейсы:**
+- Результат: готовые к копированию инструкции OCB и руководство по настройке компонента.
+- Результат: каноническая лицензия Apache License 2.0 в корне репозитория.
+- Сохраняется: подробная документация по конфигурации, развёртыванию, безопасности и демонстрации, ссылки на которую уже есть в корневом README.
 
-- [ ] **Step 1: Write failing public-documentation assertions**
+- [ ] **Шаг 1: написать падающие проверки публичной документации**
 
-In `TestDocumentationContract`, add `Custom Collector Builder` to the required README headings and assert:
+В `TestDocumentationContract` добавьте `Custom Collector Builder` к обязательным заголовкам README и проверьте:
 
 ```go
 for _, clause := range []string{
@@ -607,7 +609,7 @@ for _, clause := range []string{
 }
 ```
 
-Add:
+Добавьте:
 
 ```go
 func TestLicenseContract(t *testing.T) {
@@ -624,56 +626,57 @@ func TestLicenseContract(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run the documentation tests and confirm failure**
+- [ ] **Шаг 2: запустить тесты документации и подтвердить падение**
 
-Run:
+Выполните:
 
 ```bash
 go test ./internal/packaging -run 'Test(Documentation|License)Contract' -count=1
 ```
 
-Expected: FAIL because the new heading, module instructions, and `LICENSE` are absent.
+Ожидаемый результат: FAIL, поскольку новый заголовок, инструкции по модулю и `LICENSE` отсутствуют.
 
-- [ ] **Step 3: Add the canonical license**
+- [ ] **Шаг 3: добавить каноническую лицензию**
 
-Create `LICENSE` from the unmodified Apache License 2.0 text distributed with OpenTelemetry Collector Builder v0.154.0. Verify exact content with:
+Создайте `LICENSE` из неизменённого текста Apache License 2.0, поставляемого с OpenTelemetry Collector Builder v0.154.0. Проверьте точное содержимое командой:
 
 ```bash
 shasum -a 256 LICENSE
 ```
 
-Expected:
+Ожидаемый результат:
 
 ```text
 cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30  LICENSE
 ```
 
-- [ ] **Step 4: Add the root Builder instructions**
+- [ ] **Шаг 4: добавить инструкции Builder в корневую документацию**
 
-Add a `## Custom Collector Builder` section near Quick start. It must explain that `builder-config.yaml` controls compilation while `otelcol.yaml` controls runtime, show this exact component entry, and link both examples:
+Добавьте раздел `## Custom Collector Builder` рядом с быстрым стартом. Он должен объяснять, что `builder-config.yaml` управляет компиляцией, а `otelcol.yaml` — работой программы, показывать именно эту запись компонента и содержать ссылки на оба примера:
 
 ```yaml
 receivers:
   - gomod: github.com/wieso/zabbixreceiver/receiver/zabbixreceiver v0.1.0
 ```
 
-Document these exact facts:
+Задокументируйте следующие точные сведения:
 
 ```text
-Tested compatibility: Collector/Contrib v0.154.0 and stable Collector modules v1.60.0.
-Release tag: receiver/zabbixreceiver/v0.1.0.
+Проверенная совместимость: Collector/Contrib v0.154.0 и стабильные модули Collector v1.60.0.
+Тег выпуска: receiver/zabbixreceiver/v0.1.0.
 ```
 
-Extend the Testing command matrix with `make tidy` and `make verify-ocb-local`; state that the standard Make targets cover both root and receiver modules.
+Добавьте `make tidy` и `make verify-ocb-local` в таблицу команд тестирования; укажите, что стандартные цели Make охватывают корневой модуль и модуль приёмника.
 
-- [ ] **Step 5: Create the component README**
+- [ ] **Шаг 5: создать README компонента**
 
-Create `receiver/zabbixreceiver/README.md` with these sections and concrete content:
+Создайте `receiver/zabbixreceiver/README.md` со следующими разделами и конкретным содержимым:
 
 ````markdown
-# Zabbix Receiver
 
-The `zabbix` receiver polls numeric Zabbix items and emits OpenTelemetry gauge metrics.
+# Приёмник Zabbix
+
+Приёмник `zabbix` опрашивает числовые элементы данных Zabbix и выдаёт метрики OpenTelemetry типа gauge.
 
 ## Collector Builder
 
@@ -682,9 +685,9 @@ receivers:
   - gomod: github.com/wieso/zabbixreceiver/receiver/zabbixreceiver v0.1.0
 ```
 
-This release is tested with Collector/Contrib v0.154.0 and stable Collector modules v1.60.0. The repository tag is `receiver/zabbixreceiver/v0.1.0`.
+Этот выпуск проверен с Collector/Contrib v0.154.0 и стабильными модулями Collector v1.60.0. Тег репозитория — `receiver/zabbixreceiver/v0.1.0`.
 
-## Runtime configuration
+## Рабочая конфигурация
 
 ```yaml
 receivers:
@@ -694,18 +697,18 @@ receivers:
       token: ${env:ZABBIX_TOKEN}
 ```
 
-Add the receiver to a metrics pipeline. See `../../docs/configuration.md` for the full schema and `../../examples/ocb` for complete build-time and runtime examples.
+Добавьте приёмник в конвейер метрик. Полная схема приведена в `../../docs/configuration.md`, а полные примеры конфигурации сборки и выполнения — в `../../examples/ocb`.
 
-## Development
+## Разработка
 
-Run `go test ./...`, `go test -race ./...`, and `go vet ./...` from this directory. From the repository root, `make verify-ocb-local` verifies the complete Builder integration.
+Запустите `go test ./...`, `go test -race ./...` и `go vet ./...` из этого каталога. Из корня репозитория команда `make verify-ocb-local` проверяет полную интеграцию Builder.
 ````
 
-Use correctly nested Markdown fences when implementing this content.
+При добавлении этого содержимого правильно вкладывайте ограждения блоков Markdown.
 
-- [ ] **Step 6: Update the approved architecture paths**
+- [ ] **Шаг 6: обновить пути в утверждённой архитектуре**
 
-In `docs/superpowers/specs/2026-08-05-zabbix-opentelemetry-receiver-design.md`, replace the three path references with:
+В `docs/superpowers/specs/2026-08-05-zabbix-opentelemetry-receiver-design.md` замените три ссылки на пути следующими:
 
 ```text
 receiver/zabbixreceiver/internal/zabbix
@@ -713,11 +716,11 @@ receiver/zabbixreceiver/internal/discovery
 receiver/zabbixreceiver/internal/metrics
 ```
 
-Do not change behavior requirements in the approved receiver design.
+Не меняйте требования к поведению в утверждённом проекте приёмника.
 
-- [ ] **Step 7: Run documentation and repository scans**
+- [ ] **Шаг 7: запустить проверки документации и поиск по репозиторию**
 
-Run:
+Выполните:
 
 ```bash
 go test ./internal/packaging -run 'Test(Documentation|License|OCBExamples|ReceiverModule)Contract' -count=1
@@ -725,9 +728,9 @@ rg -n 'github\.com/aleksandr/zabbix-otel' --glob '!docs/superpowers/plans/2026-0
 git diff --check
 ```
 
-Expected: tests PASS; the scan has no output outside the explicitly historical implementation plan; diff check succeeds.
+Ожидаемый результат: тесты PASS; поиск не выдаёт результатов вне явно исторического плана реализации; проверка различий проходит успешно.
 
-- [ ] **Step 8: Commit public documentation**
+- [ ] **Шаг 8: закоммитить публичную документацию**
 
 ```bash
 git add LICENSE README.md receiver/zabbixreceiver/README.md docs/superpowers/specs/2026-08-05-zabbix-opentelemetry-receiver-design.md internal/packaging/assets_test.go
@@ -736,22 +739,22 @@ git commit -m "docs: explain versioned receiver integration"
 
 ---
 
-### Task 5: Run the Complete Pre-Publication Verification Matrix
+### Задача 5: выполнить полный набор проверок перед публикацией
 
-**Files:**
-- Verify only; modify files only if a check exposes a defect, then rerun the affected task's red-green cycle.
+**Файлы:**
+- Только проверка; изменяйте файлы лишь при обнаружении дефекта, затем повторяйте цикл «падение — успех» для затронутой задачи.
 
-**Interfaces:**
-- Consumes: both Go modules, local OCB fixture, ready-made distribution, Compose configuration, and container build.
-- Produces: evidence that the final tracked tree is ready to become the publication root commit.
+**Интерфейсы:**
+- Зависимости: оба модуля Go, локальный тестовый пример OCB, готовая сборка, конфигурация Compose и сборка контейнера.
+- Результат: свидетельства того, что итоговое дерево отслеживаемых файлов готово стать корневым коммитом публикации.
 
-- [ ] **Step 1: Invoke the completion-verification discipline**
+- [ ] **Шаг 1: применить правила проверки перед завершением**
 
-Use `superpowers:verification-before-completion` before making any success claim or creating the publication commit.
+Используйте `superpowers:verification-before-completion` перед любым заявлением об успехе или созданием коммита публикации.
 
-- [ ] **Step 2: Verify formatting and module tidiness**
+- [ ] **Шаг 2: проверить форматирование и актуальность файлов модулей**
 
-Run:
+Выполните:
 
 ```bash
 make fmt
@@ -760,11 +763,11 @@ git diff --check
 git diff --exit-code
 ```
 
-Expected: all commands exit 0 and the tree remains unchanged.
+Ожидаемый результат: все команды завершаются с кодом 0, дерево остаётся неизменным.
 
-- [ ] **Step 3: Verify both Go modules**
+- [ ] **Шаг 3: проверить оба модуля Go**
 
-Run:
+Выполните:
 
 ```bash
 make test
@@ -772,11 +775,11 @@ make test-race
 make vet
 ```
 
-Expected: root and nested module tests, race tests, and vet all PASS.
+Ожидаемый результат: тесты корневого и вложенного модулей, тесты с детектором гонок и vet — все PASS.
 
-- [ ] **Step 4: Verify both Collector assembly paths**
+- [ ] **Шаг 4: проверить оба способа сборки Collector**
 
-Run:
+Выполните:
 
 ```bash
 make build
@@ -784,11 +787,11 @@ make validate-config
 make verify-ocb-local
 ```
 
-Expected: the hand-maintained distribution and OCB-generated distribution both build; both validate their runtime configuration; OCB component inventory includes `zabbix`.
+Ожидаемый результат: вручную поддерживаемая и генерируемая OCB сборки успешно собираются; обе проходят валидацию рабочей конфигурации; список компонентов OCB включает `zabbix`.
 
-- [ ] **Step 5: Verify packaging surfaces**
+- [ ] **Шаг 5: проверить упаковку**
 
-Run:
+Выполните:
 
 ```bash
 make compose-config
@@ -796,11 +799,11 @@ docker build -t zabbix-otel-collector:verify .
 docker run --rm zabbix-otel-collector:verify components
 ```
 
-Expected: Compose configuration is valid, the image builds, and container component inventory includes `zabbix`.
+Ожидаемый результат: конфигурация Compose корректна, образ собирается, список компонентов контейнера включает `zabbix`.
 
-- [ ] **Step 6: Verify final repository state**
+- [ ] **Шаг 6: проверить итоговое состояние репозитория**
 
-Run:
+Выполните:
 
 ```bash
 git status --short
@@ -808,33 +811,33 @@ git log -6 --oneline --decorate
 git tag --list
 ```
 
-Expected: status is clean; local implementation commits are present for review; no release tag exists yet.
+Ожидаемый результат: рабочее дерево чистое; локальные коммиты реализации доступны для проверки; тег выпуска пока отсутствует.
 
 ---
 
-### Task 6: Publish One Root Commit and Verify the Remote Module
+### Задача 6: опубликовать один корневой коммит и проверить удалённый модуль
 
-**Files:**
-- Git refs only; the verified tracked tree must not change.
+**Файлы:**
+- Только ссылки Git; проверенное дерево отслеживаемых файлов не должно измениться.
 
-**Interfaces:**
-- Consumes: clean verified `HEAD` and empty `https://github.com/wieso/zabbixreceiver.git`.
-- Produces: remote `main` with one commit and tag `receiver/zabbixreceiver/v0.1.0` pointing to it.
-- Preserves: prior local history under unpushed branch `feat/ocb-module-publication`.
+**Интерфейсы:**
+- Зависимости: чистый проверенный `HEAD` и пустой `https://github.com/wieso/zabbixreceiver.git`.
+- Результат: удалённая ветка `main` с одним коммитом и указывающий на него тег `receiver/zabbixreceiver/v0.1.0`.
+- Сохраняется: прежняя локальная история в неотправленной ветке `feat/ocb-module-publication`.
 
-- [ ] **Step 1: Recheck the remote immediately before mutation**
+- [ ] **Шаг 1: повторно проверить удалённый репозиторий непосредственно перед изменением**
 
-Run:
+Выполните:
 
 ```bash
 git ls-remote https://github.com/wieso/zabbixreceiver.git
 ```
 
-Expected: no output. If any ref appears, stop and ask the user; do not force-push or overwrite it.
+Ожидаемый результат: вывод отсутствует. При появлении любой ссылки остановитесь и спросите пользователя; не выполняйте принудительную отправку или перезапись.
 
-- [ ] **Step 2: Create a root commit from the verified tree without changing files**
+- [ ] **Шаг 2: создать корневой коммит из проверенного дерева без изменения файлов**
 
-Require clean `git status --short`, then run in one shell:
+Убедитесь, что `git status --short` не выводит изменений, затем выполните в одной оболочке:
 
 ```bash
 publication_tree="$(git rev-parse HEAD^{tree})"
@@ -842,11 +845,11 @@ publication_commit="$(printf '%s\n' 'feat: publish Zabbix OpenTelemetry receiver
 git branch publication-main "$publication_commit"
 ```
 
-Expected: `publication-main` has the same tree as `feat/ocb-module-publication` but is a new root commit. The implementation branch remains checked out and local.
+Ожидаемый результат: дерево `publication-main` совпадает с `feat/ocb-module-publication`, но это новый корневой коммит. Ветка реализации остаётся текущей и локальной.
 
-- [ ] **Step 3: Prove the local publication commit has no parent**
+- [ ] **Шаг 3: доказать отсутствие родителя у локального коммита публикации**
 
-Run:
+Выполните:
 
 ```bash
 git rev-list --count publication-main
@@ -854,11 +857,11 @@ git rev-list --parents -n 1 publication-main
 git diff --exit-code publication-main feat/ocb-module-publication
 ```
 
-Expected: count is `1`; the second command prints only the new commit hash with no parent hash; the tree diff is empty.
+Ожидаемый результат: число коммитов — `1`; вторая команда выводит только хеш нового коммита без хеша родителя; различий между деревьями нет.
 
-- [ ] **Step 4: Create the nested-module release tag**
+- [ ] **Шаг 4: создать тег выпуска вложенного модуля**
 
-Run:
+Выполните:
 
 ```bash
 git tag -a receiver/zabbixreceiver/v0.1.0 -m "Zabbix receiver v0.1.0" publication-main
@@ -866,11 +869,11 @@ git rev-parse receiver/zabbixreceiver/v0.1.0^{commit}
 git rev-parse publication-main
 ```
 
-Expected: both hashes are identical.
+Ожидаемый результат: оба хеша совпадают.
 
-- [ ] **Step 5: Configure and push only the approved refs**
+- [ ] **Шаг 5: настроить и отправить только утверждённые ссылки**
 
-Run:
+Выполните:
 
 ```bash
 git remote add origin https://github.com/wieso/zabbixreceiver.git
@@ -879,23 +882,23 @@ git push --atomic origin \
   refs/tags/receiver/zabbixreceiver/v0.1.0
 ```
 
-If `origin` already exists, verify its URL is exactly the target and use `git remote set-url origin https://github.com/wieso/zabbixreceiver.git` only if needed. Do not use `--mirror`, `--all`, `--tags`, or force push.
+Если `origin` уже существует, убедитесь, что его URL точно совпадает с целевым, и используйте `git remote set-url origin https://github.com/wieso/zabbixreceiver.git` только при необходимости. Не используйте `--mirror`, `--all`, `--tags` или принудительную отправку.
 
-Expected: the atomic push publishes both refs using the user's configured Git credential helper, or publishes neither ref if either update fails.
+Ожидаемый результат: атомарная отправка публикует обе ссылки с помощью настроенного пользователем помощника учётных данных Git либо не публикует ни одну, если любое из обновлений завершается ошибкой.
 
-- [ ] **Step 6: Verify remote ref inventory**
+- [ ] **Шаг 6: проверить список удалённых ссылок**
 
-Run:
+Выполните:
 
 ```bash
 git ls-remote --heads --tags origin
 ```
 
-Expected: only `refs/heads/main`, the annotated tag ref, and its peeled `^{}` tag line are present.
+Ожидаемый результат: присутствуют только `refs/heads/main`, ссылка аннотированного тега и его строка `^{}`, указывающая на коммит.
 
-- [ ] **Step 7: Verify history and tag from a clean clone**
+- [ ] **Шаг 7: проверить историю и тег в чистом клоне**
 
-Create a temporary directory, clone `main`, and run:
+Создайте временный каталог, клонируйте `main` и выполните:
 
 ```bash
 publication_tmp="$(mktemp -d)"
@@ -907,11 +910,11 @@ git rev-parse receiver/zabbixreceiver/v0.1.0^{commit}
 git rev-parse HEAD
 ```
 
-Expected: count is `1`; `HEAD` has no parent; tag and `HEAD` hashes match.
+Ожидаемый результат: число коммитов — `1`; у `HEAD` нет родителя; хеши тега и `HEAD` совпадают.
 
-- [ ] **Step 8: Build from the remote tag with isolated caches**
+- [ ] **Шаг 8: собрать из удалённого тега с изолированными кешами**
 
-From the clean clone, set task-specific temporary `GOMODCACHE` and `GOCACHE` directories and force only this repository's module lookup to bypass proxy/sumdb lag:
+В чистом клоне задайте отдельные временные каталоги `GOMODCACHE` и `GOCACHE` для этой задачи и обойдите задержки proxy/sumdb только при поиске модуля этого репозитория:
 
 ```bash
 GONOPROXY=github.com/wieso/zabbixreceiver \
@@ -921,11 +924,11 @@ GOCACHE="$publication_tmp/buildcache" \
 go run go.opentelemetry.io/collector/cmd/builder@v0.154.0 --skip-strict-versioning=false --config examples/ocb/builder-config.yaml
 ```
 
-Do not add a `replace`, `path`, or Go workspace. Expected: Builder fetches `github.com/wieso/zabbixreceiver/receiver/zabbixreceiver@v0.1.0` from GitHub and compiles `otelcol-zabbix-dist/otelcol-zabbix`.
+Не добавляйте `replace`, `path` или рабочую область Go. Ожидаемый результат: Builder загружает `github.com/wieso/zabbixreceiver/receiver/zabbixreceiver@v0.1.0` с GitHub и компилирует `otelcol-zabbix-dist/otelcol-zabbix`.
 
-- [ ] **Step 9: Verify the remotely resolved binary**
+- [ ] **Шаг 9: проверить бинарный файл, собранный с удалённым модулем**
 
-Run from the clean clone:
+Выполните из чистого клона:
 
 ```bash
 otelcol-zabbix-dist/otelcol-zabbix components | grep -q 'zabbix'
@@ -934,8 +937,8 @@ ZABBIX_TOKEN=dummy-token \
 otelcol-zabbix-dist/otelcol-zabbix validate --config examples/ocb/otelcol.yaml
 ```
 
-Expected: both commands exit 0; validation does not contact the placeholder Zabbix endpoint.
+Ожидаемый результат: обе команды завершаются с кодом 0; валидация не обращается к адресу-заглушке Zabbix.
 
-- [ ] **Step 10: Report the publication evidence**
+- [ ] **Шаг 10: сообщить результаты проверки публикации**
 
-Report the GitHub repository URL, remote root commit hash, module tag, exact OCB `gomod` line, one-commit count, and the passing local/remote Builder verification. Also state that `feat/ocb-module-publication` exists only locally and was not pushed.
+Сообщите URL репозитория GitHub, хеш удалённого корневого коммита, тег модуля, точную строку OCB `gomod`, число коммитов, равное одному, и результаты успешной локальной и удалённой проверки Builder. Также укажите, что `feat/ocb-module-publication` существует только локально и не была отправлена.
