@@ -1,6 +1,7 @@
 package discovery
 
 import (
+	"reflect"
 	"regexp"
 	"testing"
 
@@ -87,7 +88,9 @@ func equalItemMetas(got, want []ItemMeta) bool {
 		return false
 	}
 	for i := range got {
-		if got[i] != want[i] {
+		want[i].Metadata.ItemName = want[i].Name
+		want[i].Metadata.ValueType = want[i].ValueType
+		if !reflect.DeepEqual(got[i], want[i]) {
 			return false
 		}
 	}

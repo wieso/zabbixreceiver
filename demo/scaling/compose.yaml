@@ -1,0 +1,103 @@
+name: zabbix-otel-scaling
+
+x-collector: &collector
+  image: zabbix-otel-collector:scaling
+  build:
+    context: ../..
+    dockerfile: Dockerfile
+  mem_limit: 256m
+  cpus: 0.5
+  environment:
+    GOMEMLIMIT: 160MiB
+  depends_on:
+    bootstrap:
+      condition: service_completed_successfully
+    victoriametrics:
+      condition: service_started
+  volumes:
+    - demo-config:/generated:ro
+  networks: [demo]
+
+services:
+  postgres:
+    extends: {file: ../../compose.yaml, service: postgres}
+  zabbix-server:
+    extends: {file: ../../compose.yaml, service: zabbix-server}
+    environment:
+      ZBX_STARTCONNECTORS: 4
+  zabbix-web:
+    extends: {file: ../../compose.yaml, service: zabbix-web}
+    ports: !override
+      - "127.0.0.1:${SCALING_ZABBIX_PORT:-18080}:8080"
+  victoriametrics:
+    extends: {file: ../../compose.yaml, service: victoriametrics}
+    ports: !override
+      - "127.0.0.1:${SCALING_VM_PORT:-18428}:8428"
+  bootstrap:
+    image: python:3.12-slim
+    command: [python, /demo/bootstrap.py]
+    environment:
+      ZABBIX_API_URL: http://zabbix-web:8080/api_jsonrpc.php
+      ZABBIX_USERNAME: Admin
+      ZABBIX_PASSWORD: zabbix
+    depends_on:
+      zabbix-web:
+        condition: service_healthy
+    volumes:
+      - ./bootstrap.py:/demo/bootstrap.py:ro
+      - ./api.yaml.tmpl:/demo/api.yaml.tmpl:ro
+      - ./stream.yaml.tmpl:/demo/stream.yaml.tmpl:ro
+      - demo-config:/generated
+    networks: [demo]
+  producer:
+    image: zabbix/zabbix-agent2:alpine-7.4.12
+    entrypoint: [/bin/sh, /demo/producer.sh]
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    volumes:
+      - ./producer.sh:/demo/producer.sh:ro
+    networks: [demo]
+  api-a:
+    <<: *collector
+    command: [--config=/generated/api-a.yaml]
+  api-b:
+    <<: *collector
+    command: [--config=/generated/api-b.yaml]
+  stream-1:
+    <<: *collector
+    command: [--config=/generated/stream-1.yaml]
+  stream-2:
+    <<: *collector
+    command: [--config=/generated/stream-2.yaml]
+  streaming-lb:
+    image: haproxy:3.2-alpine
+    depends_on: [stream-1, stream-2]
+    volumes:
+      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    networks: [demo]
+  verify:
+    image: python:3.12-slim
+    profiles: [verify]
+    command: [python, /demo/verify.py]
+    volumes:
+      - ./verify.py:/demo/verify.py:ro
+    networks: [demo]
+  load:
+    image: python:3.12-slim
+    profiles: [load]
+    command: [python, /demo/load.py]
+    environment:
+      RATE: ${RATE:-1000}
+      DURATION: ${DURATION:-30}
+    volumes:
+      - ./load.py:/demo/load.py:ro
+      - demo-config:/generated:ro
+    networks: [demo]
+
+networks:
+  demo: {}
+volumes:
+  demo-config: {}
+  postgres-data: {}
+  victoriametrics-data: {}

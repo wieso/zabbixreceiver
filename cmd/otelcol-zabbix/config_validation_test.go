@@ -23,6 +23,39 @@ func TestCollectorValidateUsesResolvedZabbixConfig(t *testing.T) {
 		wantError    []string
 	}{
 		{
+			name: "streaming enrichment with API credentials",
+			receiverYAML: `
+    mode: streaming
+    metadata:
+      enabled: true
+      inherited_host_tags: true
+      inventory_fields: [os, location]
+    streaming:
+      enrich_with_api: true`,
+			environment: map[string]string{"ZABBIX_URL": "https://env.example/api_jsonrpc.php", "ZABBIX_TOKEN": "env-secret"},
+		},
+		{
+			name: "streaming enrichment requires API credentials",
+			receiverYAML: `
+    mode: streaming
+    streaming:
+      enrich_with_api: true`,
+			wantError: []string{"zabbix.url", "zabbix.token"},
+		},
+		{
+			name: "streaming without API credentials",
+			receiverYAML: `
+    mode: streaming
+    streaming:
+      endpoint: 127.0.0.1:8081`,
+			environment: map[string]string{
+				"ZABBIX_URL":           "",
+				"ZABBIX_TOKEN":         "",
+				"ZABBIX_TIMEOUT":       "invalid",
+				"MAX_METRICS_PER_HOST": "invalid",
+			},
+		},
+		{
 			name:         "environment-only URL and token",
 			receiverYAML: "{}",
 			environment: map[string]string{

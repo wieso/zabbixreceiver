@@ -1,45 +1,59 @@
-# GitHub Binary Release Design
+# Проектирование выпуска бинарных файлов на GitHub
 
-## Goal
+> Исторический материал. [Статус и указатель](../README.md) · [Актуальная документация](../../README.md). Не используйте как инструкцию для текущей версии.
 
-Publish downloadable Linux binaries of `otelcol-zabbix` from GitHub Releases so an operator can install and run the collector without installing Go or building the repository.
+## Цель
 
-## Scope
+Публиковать доступные для скачивания бинарные файлы `otelcol-zabbix` для Linux
+в GitHub Releases, чтобы оператор мог установить и запустить Collector
+без установки Go и сборки репозитория.
 
-The first release supports:
+## Область изменений
+
+Первый выпуск поддерживает:
 
 - Linux `amd64`.
 - Linux `arm64`.
-- Version tags named `vX.Y.Z`.
-- Compressed tar archives, SHA-256 checksums, and release-page startup instructions.
+- Теги версий в формате `vX.Y.Z`.
+- Сжатые tar-архивы, контрольные суммы SHA-256 и инструкции по запуску
+  на странице выпуска.
 
-macOS, Windows, package-manager repositories, container publishing, signing, and automatic changelog generation are out of scope for this release implementation.
+macOS, Windows, репозитории пакетных менеджеров, публикация контейнеров,
+подписывание и автоматическое формирование списка изменений не входят
+в область этой реализации выпуска.
 
-## Existing constraints
+## Существующие ограничения
 
-- The module requires Go 1.25 or newer.
-- The entrypoint is `./cmd/otelcol-zabbix`.
-- The binary version is set through `-ldflags '-X main.version=...'`.
-- The binary can be built with `CGO_ENABLED=0` and therefore cross-compiles for the two target architectures from the Linux GitHub Actions runner.
-- Runtime credentials are supplied through environment variables and must not be embedded in release artifacts.
+- Модулю требуется Go 1.25 или новее.
+- Точка входа — `./cmd/otelcol-zabbix`.
+- Версия бинарного файла задаётся через `-ldflags '-X main.version=...'`.
+- Бинарный файл можно собрать с `CGO_ENABLED=0`, поэтому он поддерживает
+  кросс-компиляцию для двух целевых архитектур в Linux-среде GitHub Actions.
+- Рабочие учётные данные передаются через переменные окружения и не должны
+  включаться в артефакты выпуска.
 
-## Release workflow
+## Рабочий процесс выпуска
 
-`.github/workflows/release.yml` runs when a tag matching `v*.*.*` is pushed. It has `contents: write` permission and performs these phases:
+`.github/workflows/release.yml` запускается при отправке тега, соответствующего
+`v*.*.*`. Он имеет разрешение `contents: write` и выполняет следующие этапы:
 
-1. Check out the tagged commit.
-2. Set up Go 1.25.x.
-3. Download dependencies.
-4. Run the repository verification commands: formatting check, unit tests, race tests, vet, and collector configuration validation.
-5. Build and package both target architectures.
-6. Verify the generated assets before publication.
-7. Create a non-draft GitHub Release for the tag and upload both archives plus `checksums.txt`.
+1. Получить коммит, отмеченный тегом.
+2. Настроить Go 1.25.x.
+3. Скачать зависимости.
+4. Выполнить команды проверки репозитория: проверку форматирования, модульные
+   тесты, тесты с детектором гонок, vet и проверку конфигурации Collector.
+5. Собрать и упаковать обе целевые архитектуры.
+6. Проверить созданные артефакты перед публикацией.
+7. Создать опубликованный выпуск GitHub Release для тега и загрузить оба
+   архива и `checksums.txt`.
 
-The workflow must fail before publishing if any verification or packaging check fails. It must not print credentials or expand the sample configuration with real values.
+Если любая проверка или проверка упаковки завершается ошибкой, рабочий процесс
+должен остановиться до публикации. Он не должен выводить учётные данные
+или подставлять реальные значения в пример конфигурации.
 
-## Artifact contract
+## Контракт артефактов
 
-For a tag `v1.2.3`, the assets are:
+Для тега `v1.2.3` создаются следующие артефакты:
 
 ```text
 otelcol-zabbix_1.2.3_linux_amd64.tar.gz
@@ -47,9 +61,10 @@ otelcol-zabbix_1.2.3_linux_arm64.tar.gz
 checksums.txt
 ```
 
-The version in the filename omits the leading `v`, while the binary reports the tag version including `v` through the existing build-info path.
+Версия в имени файла не содержит начальную `v`, а бинарный файл сообщает
+версию тега с `v` через существующий механизм информации о сборке.
 
-Each archive contains a single top-level directory named after the archive without `.tar.gz`:
+Каждый архив содержит один каталог верхнего уровня с именем архива без `.tar.gz`:
 
 ```text
 otelcol-zabbix_1.2.3_linux_amd64/
@@ -60,50 +75,81 @@ otelcol-zabbix_1.2.3_linux_amd64/
 └── docs/deployment.md
 ```
 
-The binary is executable. Documentation and configuration are regular files. No `.git` data, build directory, token, password, or generated runtime configuration is included.
+Бинарный файл имеет право на выполнение. Документация и конфигурация являются
+обычными файлами. Данные `.git`, каталог сборки, токен, пароль и сгенерированная
+рабочая конфигурация в архив не включаются.
 
-`checksums.txt` contains one SHA-256 entry per archive, using the exact asset filenames and a stable ordering.
+`checksums.txt` содержит по одной записи SHA-256 для каждого архива с точными
+именами артефактов и стабильным порядком.
 
-## Local packaging interface
+## Интерфейс локальной упаковки
 
-The repository exposes a `make release-artifacts` target. It accepts `VERSION` (for example, `VERSION=v1.2.3`), creates a clean output directory under `dist/`, cross-compiles the two binaries, creates the archives, writes `checksums.txt`, and performs the same structural checks used by CI.
+Репозиторий предоставляет цель `make release-artifacts`. Она принимает `VERSION`
+(например, `VERSION=v1.2.3`), создаёт чистый каталог результатов в `dist/`,
+выполняет кросс-компиляцию двух бинарных файлов, создаёт архивы, записывает
+`checksums.txt` и выполняет те же структурные проверки, что используются в CI.
 
-The packaging implementation should be kept in a focused script under `scripts/` rather than duplicated in YAML. The script must use a temporary staging directory and only copy the explicitly listed release files. It must reject versions that do not match `vMAJOR.MINOR.PATCH` and reject empty or unexpected target values.
+Реализацию упаковки следует хранить в отдельном специализированном скрипте
+в `scripts/`, не дублируя её в YAML. Скрипт должен использовать временный
+промежуточный каталог и копировать только явно перечисленные файлы выпуска.
+Он должен отклонять версии, не соответствующие `vMAJOR.MINOR.PATCH`,
+а также пустые или неожиданные значения целевых платформ.
 
-## Documentation
+## Документация
 
-`README.md` gets a download-first quick-start section linking to the repository Releases page. It explains how to select the architecture, verify checksums, unpack the archive, set `ZABBIX_URL`, `ZABBIX_TOKEN`, and `VICTORIAMETRICS_REMOTE_WRITE_URL`, and start the binary with `configs/otelcol.yaml`.
+В `README.md` добавляется раздел быстрого старта, начинающийся со скачивания,
+со ссылкой на страницу Releases репозитория. Он объясняет, как выбрать
+архитектуру, проверить контрольные суммы, распаковать архив, задать `ZABBIX_URL`,
+`ZABBIX_TOKEN` и `VICTORIAMETRICS_REMOTE_WRITE_URL`, а затем запустить бинарный
+файл с `configs/otelcol.yaml`.
 
-`docs/deployment.md` gets a “Prebuilt release binary” section. It documents Linux prerequisites, the exact download URL pattern, checksum verification, installation under `/usr/local/bin`, configuration placement, and a minimal start command. It points to the existing systemd section for service installation.
+В `docs/deployment.md` добавляется раздел «Готовый бинарный файл выпуска».
+Он описывает требования к Linux, точный шаблон URL скачивания, проверку
+контрольных сумм, установку в `/usr/local/bin`, размещение конфигурации
+и минимальную команду запуска. Для установки службы он ссылается
+на существующий раздел systemd.
 
-The instructions must state that the sample token is a placeholder and that HTTPS plus secret-management practices are required for production.
+Инструкции должны указывать, что токен в примере — заполнитель, а для
+промышленной эксплуатации необходимы HTTPS и надлежащее управление секретами.
 
-## Verification
+## Проверка
 
-Packaging tests and CI checks must verify:
+Тесты упаковки и проверки CI должны подтверждать:
 
-- Both expected archives exist and no unexpected release assets are generated.
-- Archive paths match the artifact contract and contain no path traversal.
-- Each archive contains the executable binary and the three documented files.
-- The binary is executable and `components` succeeds for both architectures where the runner can execute it; cross-compiled artifacts must at least pass `file`/ELF architecture inspection and checksum verification.
-- The version is embedded in the build output.
-- `sha256sum -c checksums.txt` succeeds.
-- The release staging tree contains no configured credential names with values, token placeholders beyond the tracked documentation/configuration examples, or untracked build output.
-- Existing Go, configuration, Compose, Docker, and demo verification remains unchanged and passing.
+- Наличие обоих ожидаемых архивов и отсутствие неожиданных артефактов выпуска.
+- Соответствие путей в архивах контракту артефактов и отсутствие обхода каталогов.
+- Наличие в каждом архиве исполняемого бинарного файла и трёх описанных файлов.
+- Право на выполнение бинарного файла и успешное выполнение `components` для
+  обеих архитектур там, где среда запуска способна их выполнить; результаты
+  кросс-компиляции должны как минимум пройти проверку архитектуры через
+  `file`/ELF и проверку контрольных сумм.
+- Наличие встроенной версии в результате сборки.
+- Успешное выполнение `sha256sum -c checksums.txt`.
+- Отсутствие в промежуточном дереве выпуска настроенных имён учётных данных
+  со значениями, заполнителей токенов за пределами отслеживаемых примеров
+  документации/конфигурации и неотслеживаемых результатов сборки.
+- Сохранение существующих проверок Go, конфигурации, Compose, Docker
+  и демонстрации без изменений и их успешное прохождение.
 
-## Failure and rerun behavior
+## Поведение при сбоях и повторном запуске
 
-The workflow is tag-driven and immutable at the commit level. If publication fails before creating the release, rerunning the workflow for the same tag is allowed. If a release already exists, the workflow must fail clearly rather than silently replacing assets. A maintainer may delete or edit the GitHub Release manually before retrying; the workflow does not delete releases or rewrite repository history.
+Рабочий процесс запускается тегом и неизменяем на уровне коммита. Если публикация
+завершается ошибкой до создания выпуска, допускается повторный запуск для того же
+тега. Если выпуск уже существует, рабочий процесс должен явно завершиться ошибкой,
+а не молча заменить артефакты. Перед повторной попыткой сопровождающий может
+вручную удалить или изменить GitHub Release; рабочий процесс не удаляет выпуски
+и не переписывает историю репозитория.
 
-## Acceptance criteria
+## Критерии приёмки
 
-An operator on supported Linux can:
+Оператор в поддерживаемой системе Linux может:
 
-1. Open the GitHub Releases page and select the correct architecture archive.
-2. Verify the archive with `checksums.txt`.
-3. Extract and install the binary without Go.
-4. Copy or use the included sample configuration.
-5. Supply runtime endpoints and credentials through environment variables.
-6. Start the collector and reach its configured health endpoint.
+1. Открыть страницу GitHub Releases и выбрать архив для нужной архитектуры.
+2. Проверить архив с помощью `checksums.txt`.
+3. Распаковать и установить бинарный файл без Go.
+4. Скопировать или использовать включённый пример конфигурации.
+5. Передать рабочие адреса сервисов и учётные данные через переменные окружения.
+6. Запустить Collector и обратиться к настроенной точке проверки состояния.
 
-The repository can also produce and validate the exact release assets locally with one documented make target.
+Репозиторий также позволяет локально создать и проверить точно такие же
+артефакты выпуска одной документированной целью make.

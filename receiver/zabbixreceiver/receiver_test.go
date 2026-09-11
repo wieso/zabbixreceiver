@@ -103,11 +103,13 @@ func TestReceiverHTTPIntegration(t *testing.T) {
 	assert.Equal(t, 12.5, point.DoubleValue())
 	assert.Equal(t, pcommon.Timestamp(1700000000*1_000_000_000), point.Timestamp())
 	assert.Equal(t, map[string]any{
-		"environment": "integration",
-		"host":        "prod-a",
-		"hostid":      "101",
-		"item_key":    "system.cpu.load",
-		"itemid":      "202",
+		"environment":       "integration",
+		"host":              "prod-a",
+		"hostid":            "101",
+		"item_key":          "system.cpu.load",
+		"itemid":            "202",
+		"zabbix_item_name":  "CPU load",
+		"zabbix_value_type": "0",
 	}, point.Attributes().AsRaw())
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -153,7 +155,7 @@ func TestDiscoverReplacesSnapshotOnlyAfterSuccess(t *testing.T) {
 
 	require.NoError(t, receiver.discover(context.Background()))
 	require.NotNil(t, receiver.store.Load())
-	assert.Equal(t, []discovery.ItemMeta{{ID: "10", HostID: "1", Host: "server", Name: "CPU", Key: "system.cpu", ValueType: "0"}}, receiver.store.Load().Items())
+	assert.Equal(t, []discovery.ItemMeta{{ID: "10", HostID: "1", Host: "server", Name: "CPU", Key: "system.cpu", ValueType: "0", Metadata: zabbix.Metadata{ItemName: "CPU", ValueType: "0"}}}, receiver.store.Load().Items())
 }
 
 func TestDiscoverRetainsSnapshotOnItemFailure(t *testing.T) {

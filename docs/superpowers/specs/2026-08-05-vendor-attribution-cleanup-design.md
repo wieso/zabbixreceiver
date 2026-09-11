@@ -1,18 +1,20 @@
-# Vendor Attribution Cleanup Design
+# Проектирование удаления упоминаний поставщика
 
-Date: 2026-08-05
+> Исторический материал. [Статус и указатель](../README.md) · [Актуальная документация](../../README.md). Не используйте как инструкцию для текущей версии.
 
-## Objective
+Дата: 2026-08-05
 
-Remove the retired vendor name, its documentation URL, and all claims that the
-receiver is compatible with that vendor's product. Preserve every implemented
-configuration key, default, validation rule, metric-name rule, and runtime
-behavior.
+## Цель
 
-## Scope
+Удалить устаревшее название поставщика, URL его документации и все утверждения
+о совместимости приёмника с продуктом этого поставщика. Сохранить все реализованные
+ключи конфигурации, значения по умолчанию, правила проверки, правила именования
+метрик и поведение во время работы.
 
-The cleanup covers every current tracked text file, including historical
-design and implementation-plan documents. It updates:
+## Область изменений
+
+Очистка охватывает все текущие отслеживаемые текстовые файлы, включая исторические
+документы проектирования и планы реализации. Она обновляет:
 
 - `docs/configuration.md`
 - `docs/superpowers/specs/2026-08-05-zabbix-opentelemetry-receiver-design.md`
@@ -20,42 +22,42 @@ design and implementation-plan documents. It updates:
 - `internal/metrics/name.go`
 - `internal/packaging/assets_test.go`
 
-The Compose UI work remains a separate functional change. Files with no
-retired attribution, including `demo/collector.yaml.tmpl`, remain unchanged by
-this cleanup.
+Работа над интерфейсами Compose остаётся отдельным функциональным изменением.
+Файлы без устаревших упоминаний, включая `demo/collector.yaml.tmpl`, при этой
+очистке не меняются.
 
-## Replacement Language
+## Формулировки для замены
 
-Documentation describes the implemented settings and defaults as the project's
-public receiver contract. Metric-name construction is described as
-Prometheus-compatible. Unsupported process-level settings are described by
-their technical role without naming another product.
+Документация описывает реализованные настройки и значения по умолчанию как
+публичный контракт приёмника проекта. Формирование имён метрик описывается как
+совместимое с Prometheus. Неподдерживаемые настройки уровня процесса описываются
+через их техническую роль без упоминания другого продукта.
 
-Historical design and plan documents retain their technical requirements but
-use the same neutral terminology. The cleanup must not imply that configuration
-keys, defaults, or behavior have changed.
+Исторические документы проектирования и планы сохраняют технические требования,
+но используют ту же нейтральную терминологию. Очистка не должна создавать
+впечатление, что ключи конфигурации, значения по умолчанию или поведение изменились.
 
-## Test Contract
+## Контракт тестирования
 
-`TestDocumentationContract` stops requiring the retired external source link.
-No replacement external link is introduced. Existing assertions for the
-project design, configuration variables, validation behavior, metric delivery,
-deployment, and security remain intact.
+`TestDocumentationContract` перестаёт требовать устаревшую ссылку на внешний
+источник. Новая внешняя ссылка взамен не добавляется. Существующие проверки
+проекта, переменных конфигурации, поведения проверки, доставки метрик,
+развёртывания и безопасности сохраняются.
 
-## Verification
+## Проверка
 
-1. Run a case-insensitive repository scan for the retired vendor name and
-   require no matches in current files.
-2. Run `go test ./... -count=1` and require all packages to pass.
-3. Inspect the diff and confirm that the cleanup changes only prose, a Go
-   comment, and the obsolete external-link assertion.
-4. Confirm that `demo/collector.yaml.tmpl` has no diff.
+1. Выполнить поиск устаревшего названия поставщика по репозиторию без учёта
+   регистра и убедиться в отсутствии совпадений в текущих файлах.
+2. Выполнить `go test ./... -count=1` и убедиться, что все пакеты проходят тесты.
+3. Проверить различия и подтвердить, что очистка меняет только текст,
+   комментарий Go и устаревшую проверку внешней ссылки.
+4. Подтвердить отсутствие изменений в `demo/collector.yaml.tmpl`.
 
-## Non-Goals
+## Что не входит в цели
 
-- Removing or renaming supported configuration fields or environment
-  variables.
-- Changing default values, validation, scheduling, metrics, authentication, or
-  exporter behavior.
-- Editing the demo Collector configuration.
-- Replacing the retired attribution with a different vendor attribution.
+- Удаление или переименование поддерживаемых полей конфигурации и переменных
+  окружения.
+- Изменение значений по умолчанию, проверки, планирования, метрик,
+  аутентификации или поведения экспортёра.
+- Редактирование конфигурации Collector для демонстрации.
+- Замена устаревшего упоминания поставщика упоминанием другого поставщика.

@@ -1,8 +1,9 @@
-.PHONY: fmt download tidy test test-race vet build validate-config verify-ocb-local release-artifacts docker-build compose-config demo-up demo-verify demo-down
+.PHONY: fmt download tidy test test-race vet vulncheck build validate-config verify-ocb-local release-artifacts docker-build compose-config demo-up demo-verify demo-down
 
 VERSION ?= dev
 IMAGE ?= zabbix-otel-collector:local
-OCB_VERSION ?= v0.154.0
+GOVULNCHECK_VERSION ?= v1.8.0
+OCB_VERSION ?= v0.160.0
 OCB_LOCAL_OUTPUT ?= .ocb/local
 
 fmt:
@@ -28,6 +29,10 @@ vet:
 	go vet ./...
 	cd receiver/zabbixreceiver && go vet ./...
 
+vulncheck:
+	go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
+	cd receiver/zabbixreceiver && go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
+
 build:
 	mkdir -p bin
 	go build -ldflags '-X main.version=$(VERSION)' -o bin/otelcol-zabbix ./cmd/otelcol-zabbix
@@ -51,10 +56,30 @@ compose-config:
 	docker compose config --quiet
 
 demo-up:
-	docker compose up -d --build postgres zabbix-server zabbix-web bootstrap producer victoriametrics otelcol-zabbix
+	docker compose up -d --build postgres zabbix-server zabbix-web bootstrap producer victoriametrics otelcol-zabbix grafana
 
 demo-verify:
 	docker compose --profile verify run --rm verify
+	docker compose --profile verify run --rm --no-deps --entrypoint /bin/sh verify /demo/verify-grafana.sh
 
 demo-down:
 	docker compose down --volumes --remove-orphans
+
+.PHONY: scaling-up scaling-verify scaling-failover scaling-down scaling-bench scaling-load
+scaling-up:
+	docker compose -f demo/scaling/compose.yaml up -d --build
+
+scaling-verify:
+	docker compose -f demo/scaling/compose.yaml --profile verify run --rm verify
+
+scaling-failover:
+	sh demo/scaling/failover.sh
+
+scaling-down:
+	docker compose -f demo/scaling/compose.yaml down --volumes --remove-orphans
+
+scaling-bench:
+	cd receiver/zabbixreceiver && go test -run '^$$' -bench BenchmarkScaling -benchmem -benchtime=1s -count=3 -cpu=1
+
+scaling-load:
+	docker compose -f demo/scaling/compose.yaml --profile load run --rm load

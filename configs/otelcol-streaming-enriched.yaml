@@ -1,0 +1,48 @@
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+receivers:
+  zabbix:
+    mode: streaming
+    metadata:
+      enabled: true
+      inherited_host_tags: true
+      inventory_fields: [os, location]
+    zabbix:
+      url: ${env:ZABBIX_URL}
+      token: ${env:ZABBIX_TOKEN}
+    schedule:
+      jobs:
+        discover: {enabled: true, run_on_start: true, interval: 5m, timeout: 60s}
+        values: {enabled: false}
+    streaming:
+      enrich_with_api: true
+      endpoint: 0.0.0.0:8081
+      token: ${env:ZABBIX_STREAM_TOKEN}
+    prom:
+      prefix: zabbix_stream_
+      const_labels: {env: production, instance: zabbix-01}
+processors:
+  memory_limiter: {check_interval: 1s, limit_mib: 256}
+  batch: {}
+exporters:
+  prometheusremotewrite:
+    endpoint: ${env:VICTORIAMETRICS_REMOTE_WRITE_URL}
+service:
+  telemetry:
+    logs:
+      level: info
+      encoding: json
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+  extensions: [health_check]
+  pipelines:
+    metrics:
+      receivers: [zabbix]
+      processors: [memory_limiter, batch]
+      exporters: [prometheusremotewrite]

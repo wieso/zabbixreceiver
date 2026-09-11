@@ -29,10 +29,10 @@ func TestReceiverModuleContract(t *testing.T) {
 	module := readAsset(t, "receiver/zabbixreceiver/go.mod")
 	for _, want := range []string{
 		"module github.com/wieso/zabbixreceiver/receiver/zabbixreceiver",
-		"go 1.25.0",
-		"go.opentelemetry.io/collector/component v1.60.0",
-		"go.opentelemetry.io/collector/receiver v1.60.0",
-		"go.opentelemetry.io/collector/receiver/receivertest v0.154.0",
+		"go 1.26.8",
+		"go.opentelemetry.io/collector/component v1.66.0",
+		"go.opentelemetry.io/collector/receiver v1.66.0",
+		"go.opentelemetry.io/collector/receiver/receivertest v0.160.0",
 	} {
 		if !strings.Contains(module, want) {
 			t.Errorf("receiver go.mod missing %q", want)
@@ -55,57 +55,26 @@ func TestReceiverModuleContract(t *testing.T) {
 
 func TestDocumentationContract(t *testing.T) {
 	readme := readAsset(t, "README.md")
-	for _, heading := range []string{
-		"Architecture",
-		"Quick start",
-		"Custom Collector Builder",
-		"Configuration",
-		"Metric mapping",
-		"Docker Compose demo",
-		"VM/systemd",
-		"Kubernetes",
-		"Testing",
-		"Security",
-	} {
-		if !strings.Contains(readme, "## "+heading) {
-			t.Errorf("README.md missing %q section", heading)
-		}
-	}
-	for _, clause := range []string{
-		"github.com/wieso/zabbixreceiver/receiver/zabbixreceiver v0.1.0",
-		"receiver/zabbixreceiver/v0.1.0",
-		"Collector/Contrib v0.154.0",
-	} {
-		if !strings.Contains(readme, clause) {
-			t.Errorf("README.md missing publication clause %q", clause)
-		}
-	}
-	for name, link := range map[string]string{
-		"approved design": "docs/superpowers/specs/2026-08-05-zabbix-opentelemetry-receiver-design.md",
+	for _, link := range []string{
+		"docs/configuration.md",
+		"docs/deployment.md",
+		"docs/architecture.md",
+		"docs/development.md",
+		"docs/README.md",
+		"receiver/zabbixreceiver/README.md",
 	} {
 		if !strings.Contains(readme, link) {
-			t.Errorf("README.md missing %s link %q", name, link)
+			t.Errorf("README.md missing guide link %q", link)
 		}
 	}
-	for name, clause := range map[string]string{
-		"two-stage validation":     "explicit receiver overrides participate in both validation stages",
-		"downstream delivery gate": "only after a values cycle successfully retrieves every chunk from a non-empty snapshot and emits at least one valid point",
-		"fresh demo sample":        "sample timestamp is at or after the verifier start",
+	moduleReadme := readAsset(t, "receiver/zabbixreceiver/README.md")
+	for _, clause := range []string{
+		"github.com/wieso/zabbixreceiver/receiver/zabbixreceiver v0.2.0",
+		"receiver/zabbixreceiver/v0.2.0",
+		"Collector/Contrib v0.160.0",
 	} {
-		if !strings.Contains(readme, clause) {
-			t.Errorf("README.md missing %s clause %q", name, clause)
-		}
-	}
-	for name, clause := range map[string]string{
-		"Zabbix demo UI URL":            "http://127.0.0.1:8080/",
-		"VictoriaMetrics VMUI URL":      "http://127.0.0.1:8428/vmui/",
-		"Zabbix demo UI credentials":    "`Admin` / `zabbix`",
-		"VictoriaMetrics demo query":    `zabbix_demo_counter{host="otel-demo-host",env="compose"}`,
-		"Zabbix UI port override":       "ZABBIX_WEB_PORT",
-		"VictoriaMetrics port override": "VICTORIAMETRICS_PORT",
-	} {
-		if !strings.Contains(readme, clause) {
-			t.Errorf("README.md missing %s clause %q", name, clause)
+		if !strings.Contains(moduleReadme, clause) {
+			t.Errorf("receiver README missing publication clause %q", clause)
 		}
 	}
 
@@ -122,18 +91,17 @@ func TestDocumentationContract(t *testing.T) {
 		}
 	}
 	for name, clause := range map[string]string{
-		"Collector-resolved validation":    "Collector recursive validation operates on an environment-resolved clone",
-		"environment-only required fields": "can satisfy omitted `zabbix.url` and `zabbix.token`",
-		"invalid YAML replacement":         "`items_per_request: 0` is valid when `ZABBIX_ITEMS_PER_REQUEST=250`",
-		"resolved timeout":                 "`zabbix.timeout` must remain positive after overrides",
+		"Collector-resolved validation":    "Рекурсивная валидация Collector работает с копией, в которой разрешены значения окружения",
+		"environment-only required fields": "могут заполнить отсутствующие `zabbix.url` и `zabbix.token`",
+		"invalid YAML replacement":         "`items_per_request: 0` корректен при заданной `ZABBIX_ITEMS_PER_REQUEST=250`",
+		"resolved timeout":                 "После переопределений `zabbix.timeout` должен оставаться положительным",
+		"downstream delivery gate":         "Если точек не осталось, следующий обработчик не вызывается. Иначе передаётся ровно один пакет метрик",
 	} {
 		if !strings.Contains(configuration, clause) {
 			t.Errorf("docs/configuration.md missing %s clause %q", name, clause)
 		}
 	}
 
-	design := readAsset(t, "docs/superpowers/specs/2026-08-05-zabbix-opentelemetry-receiver-design.md")
-	plan := readAsset(t, "docs/superpowers/plans/2026-08-05-zabbix-opentelemetry-receiver.md")
 	telemetryNames := []string{
 		"otelcol_receiver_zabbix_discover_attempts",
 		"otelcol_receiver_zabbix_discover_errors",
@@ -145,27 +113,35 @@ func TestDocumentationContract(t *testing.T) {
 		"otelcol_receiver_zabbix_invalid_values",
 		"otelcol_receiver_zabbix_filtered_items",
 		"otelcol_receiver_zabbix_limited_items",
-	}
-	if !strings.Contains(design, "authoritative acceptance surface is exactly these ten instruments") {
-		t.Error("approved design does not record the final telemetry adjudication")
+		"otelcol_receiver_zabbix_discovered_hosts",
+		"otelcol_receiver_zabbix_discovered_items",
+		"otelcol_receiver_zabbix_discover_last_success_timestamp",
+		"otelcol_receiver_zabbix_values_last_success_timestamp",
+		"otelcol_receiver_zabbix_streaming_requests",
 	}
 	for _, name := range telemetryNames {
-		if strings.Count(design, name) != 1 {
-			t.Errorf("approved design must define telemetry instrument %q exactly once", name)
-		}
-		if !strings.Contains(plan, name) {
-			t.Errorf("implementation plan missing authoritative telemetry instrument %q", name)
-		}
-	}
-	for documentName, contents := range map[string]string{"design": design, "plan": plan} {
-		if !strings.Contains(contents, "sample timestamp is at or after the verifier start") {
-			t.Errorf("%s missing fresh-sample verification contract", documentName)
+		if strings.Count(configuration, "| `"+name+"` |") != 1 {
+			t.Errorf("docs/configuration.md must define telemetry instrument %q exactly once", name)
 		}
 	}
 
 	deployment := readAsset(t, "docs/deployment.md")
+	for name, clause := range map[string]string{
+		"fresh demo sample":                    "Временная метка исходного образца должна быть не раньше запуска проверки",
+		"Zabbix demo UI URL":                   "http://127.0.0.1:8080/",
+		"VictoriaMetrics VMUI URL":             "http://127.0.0.1:8428/vmui/",
+		"Zabbix demo UI credentials":           "`Admin` / `zabbix`",
+		"VictoriaMetrics API demo query":       `zabbix_api_demo_counter{host="otel-demo-host",env="compose"}`,
+		"VictoriaMetrics streaming demo query": `zabbix_stream_OpenTelemetry_demo_counter{host="otel-demo-host",env="compose"}`,
+		"Zabbix UI port override":              "ZABBIX_WEB_PORT",
+		"VictoriaMetrics port override":        "VICTORIAMETRICS_PORT",
+	} {
+		if !strings.Contains(deployment, clause) {
+			t.Errorf("docs/deployment.md missing %s clause %q", name, clause)
+		}
+	}
 	safeRender := "kubectl kustomize deployments/kubernetes >/dev/null"
-	secretEdit := "Only after that validation, replace both placeholders"
+	secretEdit := "Только после этой проверки локально замените оба заполнителя"
 	apply := "kubectl apply -k deployments/kubernetes"
 	renderIndex := strings.Index(deployment, safeRender)
 	editIndex := strings.Index(deployment, secretEdit)
@@ -174,10 +150,10 @@ func TestDocumentationContract(t *testing.T) {
 		t.Errorf("docs/deployment.md must validate placeholders without output before editing and applying the Secret")
 	}
 	for name, clause := range map[string]string{
-		"real-secret render warning":   "Never run `kubectl kustomize` after inserting real credentials",
+		"real-secret render warning":   "Никогда не запускайте `kubectl kustomize` после внесения настоящих учётных данных",
 		"namespace-preserving cleanup": "kubectl -n observability delete deployment/otelcol-zabbix service/otelcol-zabbix configmap/otelcol-zabbix secret/otelcol-zabbix",
-		"namespace deletion warning":   "would delete the entire `observability` namespace, including unrelated workloads",
-		"port-forward terminal":        "In a second terminal, while port-forward is still running",
+		"namespace deletion warning":   "удалит всё пространство имён `observability`, включая посторонние рабочие нагрузки",
+		"port-forward terminal":        "Во втором терминале, пока перенаправление порта работает",
 	} {
 		if !strings.Contains(deployment, clause) {
 			t.Errorf("docs/deployment.md missing %s clause %q", name, clause)
@@ -241,10 +217,10 @@ func TestReleasePackagingContract(t *testing.T) {
 func TestDockerfileContract(t *testing.T) {
 	dockerfile := readAsset(t, "Dockerfile")
 	for _, want := range []string{
-		"FROM golang:1.25-alpine AS build",
+		"FROM golang:1.26.8-alpine AS build",
 		"CGO_ENABLED=0",
 		"-trimpath",
-		"-ldflags=\"-s -w\"",
+		"-ldflags=\"-w\"",
 		"FROM gcr.io/distroless/static-debian13:nonroot",
 		"USER 10001:10001",
 		"ENTRYPOINT [\"/otelcol-zabbix\"]",
@@ -286,7 +262,7 @@ func TestDualModuleAutomationContract(t *testing.T) {
 
 func TestOCBExamplesContract(t *testing.T) {
 	published := readAsset(t, "examples/ocb/builder-config.yaml")
-	wantModule := "github.com/wieso/zabbixreceiver/receiver/zabbixreceiver v0.1.0"
+	wantModule := "github.com/wieso/zabbixreceiver/receiver/zabbixreceiver v0.2.0"
 	if !strings.Contains(published, wantModule) {
 		t.Errorf("published OCB example missing %q", wantModule)
 	}
@@ -383,10 +359,10 @@ func TestKubernetesKustomizationSemanticContract(t *testing.T) {
 	deploymentSpec := mapValue(t, value(t, deployment, "spec"))
 	assertEqual(t, 1, value(t, deploymentSpec, "replicas"))
 	strategy := mapValue(t, value(t, deploymentSpec, "strategy"))
-	assertEqual(t, "RollingUpdate", value(t, strategy, "type"))
-	rollingUpdate := mapValue(t, value(t, strategy, "rollingUpdate"))
-	assertEqual(t, 0, value(t, rollingUpdate, "maxUnavailable"))
-	assertEqual(t, 1, value(t, rollingUpdate, "maxSurge"))
+	assertEqual(t, "Recreate", value(t, strategy, "type"))
+	if _, ok := strategy["rollingUpdate"]; ok {
+		t.Error("API deployment must not enable overlapping rollout pods")
+	}
 
 	template := mapValue(t, value(t, deploymentSpec, "template"))
 	podLabels := mapValue(t, value(t, mapValue(t, value(t, template, "metadata")), "labels"))
@@ -1192,5 +1168,43 @@ func killRecordedProcess(t *testing.T, path string) {
 	process, err := os.FindProcess(pid)
 	if err == nil {
 		_ = process.Kill()
+	}
+}
+
+// Exercise the real jq predicate: success requires both fresh series.
+func TestVerifierRequiresBothFreshModes(t *testing.T) {
+	jq, err := exec.LookPath("jq")
+	if err != nil {
+		t.Skip("jq is required")
+	}
+	script, err := filepath.Abs(filepath.Join("..", "..", "demo", "verify.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name    string
+		samples string
+		success bool
+	}{
+		{"API only", `[{"metric":{"__name__":"zabbix_api_demo_counter","host":"otel-demo-host","env":"compose","item_key":"demo.counter","hostid":"1","itemid":"2"},"value":[100,1]}]`, false},
+		{"stale streaming", `[{"metric":{"__name__":"zabbix_api_demo_counter","host":"otel-demo-host","env":"compose","item_key":"demo.counter","hostid":"1","itemid":"2"},"value":[100,1]},{"metric":{"__name__":"zabbix_stream_OpenTelemetry_demo_counter","host":"otel-demo-host","env":"compose","itemid":"2"},"value":[99,1]}]`, false},
+		{"both fresh", `[{"metric":{"__name__":"zabbix_api_demo_counter","host":"otel-demo-host","env":"compose","item_key":"demo.counter","hostid":"1","itemid":"2"},"value":[100,1]},{"metric":{"__name__":"zabbix_stream_OpenTelemetry_demo_counter","host":"otel-demo-host","env":"compose","itemid":"2"},"value":[100,1]}]`, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.Symlink(jq, filepath.Join(dir, "jq")); err != nil {
+				t.Fatal(err)
+			}
+			writeExecutable(t, filepath.Join(dir, "sleep"), "#!/bin/sh\nexit 0\n")
+			// Deadline remains in the future on the first query and expires after it.
+			writeExecutable(t, filepath.Join(dir, "date"), "#!/bin/sh\nif [ -f \"$TEST_STATE/queried\" ]; then printf '105\\n'; else printf '100\\n'; fi\n")
+			writeExecutable(t, filepath.Join(dir, "curl"), "#!/bin/sh\ncase \"$*\" in *'timestamp('*'>= 100'*) ;; *) exit 2 ;; esac\n: > \"$TEST_STATE/queried\"\nprintf '%s\\n' '"+`{"status":"success","data":{"result":`+tc.samples+"}}'\n")
+			cmd := exec.Command("/bin/sh", script)
+			cmd.Env = append(os.Environ(), "PATH="+dir, "TEST_STATE="+dir, "VERIFY_TIMEOUT_SECONDS=5")
+			output, err := cmd.CombinedOutput()
+			if (err == nil) != tc.success {
+				t.Fatalf("success=%v, err=%v, output=%s", tc.success, err, output)
+			}
+		})
 	}
 }

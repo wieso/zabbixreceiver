@@ -12,6 +12,17 @@ exporters:
     verbosity: basic
 
 service:
+  telemetry:
+    logs:
+      level: info
+      encoding: json
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 127.0.0.1
+                port: 8888
   pipelines:
     metrics:
       receivers: [zabbix]

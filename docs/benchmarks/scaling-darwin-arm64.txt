@@ -1,0 +1,24 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wieso/zabbixreceiver/receiver/zabbixreceiver
+cpu: Apple M2
+BenchmarkScalingAPIBuild/1000         	     147	  10993129 ns/op	     90966 points/s	 1239993 B/op	   18024 allocs/op
+BenchmarkScalingAPIBuild/1000         	     100	  13556478 ns/op	     73766 points/s	 1239994 B/op	   18024 allocs/op
+BenchmarkScalingAPIBuild/1000         	    1054	    977845 ns/op	   1022657 points/s	 1239993 B/op	   18024 allocs/op
+BenchmarkScalingAPIBuild/10000        	      84	  12188259 ns/op	    820462 points/s	12037740 B/op	  180059 allocs/op
+BenchmarkScalingAPIBuild/10000        	     103	  13234198 ns/op	    755619 points/s	12037740 B/op	  180059 allocs/op
+BenchmarkScalingAPIBuild/10000        	      82	  12360868 ns/op	    809005 points/s	12037740 B/op	  180059 allocs/op
+BenchmarkScalingAPIBuild/100000       	       8	 161331656 ns/op	    619842 points/s	117831022 B/op	 1800293 allocs/op
+BenchmarkScalingAPIBuild/100000       	       8	 134282552 ns/op	    744699 points/s	117831024 B/op	 1800293 allocs/op
+BenchmarkScalingAPIBuild/100000       	       8	 131878677 ns/op	    758274 points/s	117831020 B/op	 1800293 allocs/op
+BenchmarkScalingStreaming/100         	    5107	    228798 ns/op	  46.77 MB/s	    437067 points/s	  128357 B/op	    2950 allocs/op
+BenchmarkScalingStreaming/100         	    5433	    242291 ns/op	  44.16 MB/s	    412727 points/s	  128357 B/op	    2950 allocs/op
+BenchmarkScalingStreaming/100         	    4255	    272618 ns/op	  39.25 MB/s	    366814 points/s	  128357 B/op	    2950 allocs/op
+BenchmarkScalingStreaming/1000        	     471	   2422812 ns/op	  44.16 MB/s	    412744 points/s	 1173438 B/op	   29054 allocs/op
+BenchmarkScalingStreaming/1000        	     534	   3107805 ns/op	  34.43 MB/s	    321771 points/s	 1173440 B/op	   29054 allocs/op
+BenchmarkScalingStreaming/1000        	     453	   5052921 ns/op	  21.18 MB/s	    197905 points/s	 1173440 B/op	   29054 allocs/op
+BenchmarkScalingStreaming/10000       	      21	  64958982 ns/op	  16.47 MB/s	    153943 points/s	11762648 B/op	  290067 allocs/op
+BenchmarkScalingStreaming/10000       	      21	  64385220 ns/op	  16.62 MB/s	    155315 points/s	11762670 B/op	  290067 allocs/op
+BenchmarkScalingStreaming/10000       	      19	  59586550 ns/op	  17.96 MB/s	    167823 points/s	11762658 B/op	  290067 allocs/op
+PASS
+ok  	github.com/wieso/zabbixreceiver/receiver/zabbixreceiver	32.505s

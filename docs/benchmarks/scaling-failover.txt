@@ -1,0 +1,26 @@
+ Container zabbix-otel-scaling-verify-run-009486fdd9af Creating
+ Container zabbix-otel-scaling-verify-run-009486fdd9af Created
+{"fresh_api_ownership": [["scale-a", "api-a"], ["scale-b", "api-b"]], "fresh_stream_routes": [["scale-a", "stream-1"], ["scale-a", "stream-2"], ["scale-b", "stream-1"], ["scale-b", "stream-2"]]}
+ Container zabbix-otel-scaling-stream-1-1 Stopping
+ Container zabbix-otel-scaling-stream-1-1 Stopped
+ Container zabbix-otel-scaling-verify-run-588a953dc334 Creating
+ Container zabbix-otel-scaling-verify-run-588a953dc334 Created
+{"fresh_api_ownership": [["scale-a", "api-a"], ["scale-b", "api-b"]], "fresh_stream_routes": [["scale-a", "stream-2"], ["scale-b", "stream-2"]]}
+ Container zabbix-otel-scaling-postgres-1 Waiting
+ Container zabbix-otel-scaling-postgres-1 Healthy
+ Container zabbix-otel-scaling-postgres-1 Waiting
+ Container zabbix-otel-scaling-zabbix-server-1 Waiting
+ Container zabbix-otel-scaling-postgres-1 Healthy
+ Container zabbix-otel-scaling-zabbix-server-1 Healthy
+ Container zabbix-otel-scaling-zabbix-web-1 Waiting
+ Container zabbix-otel-scaling-zabbix-web-1 Healthy
+ Container zabbix-otel-scaling-bootstrap-1 Starting
+ Container zabbix-otel-scaling-bootstrap-1 Started
+ Container zabbix-otel-scaling-bootstrap-1 Waiting
+ Container zabbix-otel-scaling-bootstrap-1 Exited
+ Container zabbix-otel-scaling-stream-1-1 Starting
+ Container zabbix-otel-scaling-stream-1-1 Started
+ Container zabbix-otel-scaling-verify-run-8af652bd0785 Creating
+ Container zabbix-otel-scaling-verify-run-8af652bd0785 Created
+{"fresh_api_ownership": [["scale-a", "api-a"], ["scale-b", "api-b"]], "fresh_stream_routes": [["scale-a", "stream-1"], ["scale-a", "stream-2"], ["scale-b", "stream-1"], ["scale-b", "stream-2"]]}
+PASS: both workers, surviving worker, restored workers; API shards remained active

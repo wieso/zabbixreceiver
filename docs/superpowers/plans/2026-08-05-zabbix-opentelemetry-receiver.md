@@ -1,101 +1,103 @@
-# Zabbix OpenTelemetry Receiver Implementation Plan
+# План реализации приёмника Zabbix для OpenTelemetry
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> Исторический материал. [Статус и указатель](../README.md) · [Актуальная документация](../../README.md). Не используйте как инструкцию для текущей версии.
 
-**Goal:** Build and deploy a native Go OpenTelemetry Collector receiver that polls Zabbix numeric items and sends them through a Collector metrics pipeline to VictoriaMetrics.
+> **Для агентов-исполнителей:** ОБЯЗАТЕЛЬНЫЙ ВСПОМОГАТЕЛЬНЫЙ НАВЫК: используйте superpowers:subagent-driven-development (рекомендуется) или superpowers:executing-plans для последовательного выполнения задач этого плана. Для отслеживания шагов используются флажки (`- [ ]`).
 
-**Architecture:** A typed Zabbix JSON-RPC client feeds separate discovery and values jobs. Discovery publishes immutable filtered metadata snapshots; values collection turns `lastvalue` and `lastclock` into OpenTelemetry gauges and passes them to `consumer.Metrics`. A custom Collector distribution embeds the receiver and standard Prometheus remote-write exporter.
+**Цель:** создать и развернуть нативный приёмник OpenTelemetry Collector на Go, который опрашивает числовые элементы данных Zabbix и передаёт их через конвейер метрик Collector в VictoriaMetrics.
 
-**Tech Stack:** Go 1.25+, OpenTelemetry Collector v0.153.0 with stable modules v1.59.0, OpenTelemetry Collector Contrib v0.153.0, Zabbix 7.4.12 demo images, VictoriaMetrics v1.148.0 community image, Docker Compose v2.24+, Kubernetes manifests, systemd.
+**Архитектура:** типизированный клиент Zabbix JSON-RPC обслуживает отдельные задания обнаружения и сбора значений. Обнаружение публикует неизменяемые отфильтрованные снимки метаданных; сбор значений преобразует `lastvalue` и `lastclock` в метрики OpenTelemetry типа gauge и передаёт их в `consumer.Metrics`. Специализированная сборка Collector включает приёмник и стандартный экспортёр Prometheus remote-write.
 
-## Global Constraints
+**Технологии:** Go 1.25+, OpenTelemetry Collector v0.153.0 со стабильными модулями v1.59.0, OpenTelemetry Collector Contrib v0.153.0, демонстрационные образы Zabbix 7.4.12, общедоступный образ VictoriaMetrics v1.148.0, Docker Compose v2.24+, манифесты Kubernetes, systemd.
 
-- The deliverable is a native OpenTelemetry Collector metrics receiver, not a standalone Prometheus exporter.
-- The public receiver type is `zabbix` and the Go module is `github.com/aleksandr/zabbix-otel`.
-- Preserve the public receiver `schedule`, `prom.prefix`, `prom.const_labels`, and `zabbix` configuration keys and documented Zabbix environment overrides.
-- Omit `base.address`, standalone exporter HTTP endpoints, standalone CLI flags, and agent-specific configuration.
-- Keep the receiver independent of VictoriaMetrics; use `prometheusremotewrite` in deployment configuration.
-- Poll only Zabbix numeric item types float (`0`) and unsigned integer (`3`).
-- Emit OpenTelemetry gauge data points with Zabbix `lastclock` timestamps and the four reserved attributes `host`, `hostid`, `item_key`, and `itemid`.
-- Never log the configured Zabbix token or full authenticated JSON-RPC request bodies.
-- The runtime container and Kubernetes workload run as non-root.
-- The Compose demonstration must use a real Zabbix server/API and prove that the seeded metric is queryable from VictoriaMetrics.
-- Every implementation change follows red-green-refactor and ends with focused tests plus a commit.
+## Общие ограничения
 
-## File Map
+- Результат — нативный приёмник метрик OpenTelemetry Collector, а не самостоятельный экспортёр Prometheus.
+- Публичный тип приёмника — `zabbix`, модуль Go — `github.com/aleksandr/zabbix-otel`.
+- Сохранить публичные ключи конфигурации приёмника `schedule`, `prom.prefix`, `prom.const_labels` и `zabbix`, а также документированные переопределения Zabbix через окружение.
+- Не включать `base.address`, HTTP-адреса самостоятельного экспортёра, отдельные флаги CLI и настройки, специфичные для агента.
+- Сохранить независимость приёмника от VictoriaMetrics; использовать `prometheusremotewrite` в конфигурации развёртывания.
+- Опрашивать только числовые типы элементов данных Zabbix: число с плавающей точкой (`0`) и беззнаковое целое (`3`).
+- Выдавать точки данных OpenTelemetry типа gauge с временными метками Zabbix `lastclock` и четырьмя зарезервированными атрибутами `host`, `hostid`, `item_key` и `itemid`.
+- Никогда не записывать в журнал настроенный токен Zabbix или полные тела аутентифицированных запросов JSON-RPC.
+- Контейнер приложения и рабочая нагрузка Kubernetes запускаются без прав root.
+- Демонстрация Compose должна использовать настоящий сервер/API Zabbix и доказывать, что подготовленная метрика доступна для запросов в VictoriaMetrics.
+- Каждое изменение реализации проходит цикл «красный — зелёный — рефакторинг» и завершается целевыми тестами и коммитом.
 
-### Module and project automation
+## Карта файлов
 
-- `go.mod`, `go.sum`: root Go module and pinned Collector dependencies.
-- `Makefile`: formatting, unit, race, vet, build, container, Compose, and verification targets.
-- `.gitignore`, `.dockerignore`: generated binaries, local environment files, coverage, and build context exclusions.
-- `.github/workflows/ci.yml`: repeatable Go and packaging checks.
+### Модуль и автоматизация проекта
 
-### Receiver component
+- `go.mod`, `go.sum`: корневой модуль Go и закреплённые зависимости Collector.
+- `Makefile`: цели форматирования, модульных тестов, проверки гонок, vet, сборки, контейнеров, Compose и проверки результата.
+- `.gitignore`, `.dockerignore`: исключения для сгенерированных бинарных файлов, локальных файлов окружения, покрытия и контекста сборки.
+- `.github/workflows/ci.yml`: воспроизводимые проверки Go и упаковки.
 
-- `receiver/zabbixreceiver/config.go`: Public receiver configuration types, defaults, environment resolution, and validation.
-- `receiver/zabbixreceiver/config_test.go`: defaults, validation, and environment precedence.
-- `receiver/zabbixreceiver/factory.go`: Collector `NewFactory` and production construction.
-- `receiver/zabbixreceiver/factory_test.go`: component type, stability, default config, and creation checks.
-- `receiver/zabbixreceiver/receiver.go`: discovery/value operations, lifecycle, snapshot use, and downstream delivery.
-- `receiver/zabbixreceiver/receiver_test.go`: operation, chunking, recovery, and integration-fixture tests.
-- `receiver/zabbixreceiver/scheduler.go`: independent non-overlapping job loops with interval, timeout, run-on-start, and jitter behavior.
-- `receiver/zabbixreceiver/scheduler_test.go`: deterministic delay calculation, cancellation, and non-overlap tests.
-- `receiver/zabbixreceiver/telemetry.go`: Collector-native receiver instruments.
-- `receiver/zabbixreceiver/telemetry_test.go`: instrument creation and counter recording smoke tests.
+### Компонент приёмника
 
-### Internal packages
+- `receiver/zabbixreceiver/config.go`: публичные типы конфигурации приёмника, значения по умолчанию, обработка окружения и валидация.
+- `receiver/zabbixreceiver/config_test.go`: значения по умолчанию, валидация и приоритет окружения.
+- `receiver/zabbixreceiver/factory.go`: `NewFactory` Collector и создание для эксплуатации.
+- `receiver/zabbixreceiver/factory_test.go`: проверки типа компонента, стабильности, конфигурации по умолчанию и создания.
+- `receiver/zabbixreceiver/receiver.go`: операции обнаружения/сбора значений, жизненный цикл, использование снимков и доставка следующему компоненту.
+- `receiver/zabbixreceiver/receiver_test.go`: тесты операций, разбиения на порции, восстановления и интеграции с тестовым окружением.
+- `receiver/zabbixreceiver/scheduler.go`: независимые циклы заданий без перекрытия запусков, с интервалом, тайм-аутом, запуском при старте и случайной задержкой.
+- `receiver/zabbixreceiver/scheduler_test.go`: тесты детерминированного расчёта задержки, отмены и отсутствия перекрытия.
+- `receiver/zabbixreceiver/telemetry.go`: штатные инструменты телеметрии приёмника Collector.
+- `receiver/zabbixreceiver/telemetry_test.go`: базовые тесты создания инструментов и записи счётчиков.
 
-- `internal/zabbix/types.go`: `Host`, `Item`, `Value`, API interface, and JSON-RPC errors.
-- `internal/zabbix/client.go`: authenticated JSON-RPC transport and typed API methods.
-- `internal/zabbix/client_test.go`: request contracts, modern/legacy auth, decoding, timeouts, and redaction.
-- `internal/discovery/select.go`: regex filtering and deterministic per-host limits.
-- `internal/discovery/select_test.go`: include/exclude precedence and limit tests.
-- `internal/discovery/snapshot.go`: immutable atomic snapshot store.
-- `internal/discovery/snapshot_test.go`: copy and replacement behavior.
-- `internal/metrics/name.go`: Prometheus-compatible metric-name construction.
-- `internal/metrics/name_test.go`: sanitization and validation table tests.
-- `internal/metrics/builder.go`: Zabbix-to-`pmetric.Metrics` conversion.
-- `internal/metrics/builder_test.go`: gauges, values, timestamps, attributes, descriptions, and skipped values.
+### Внутренние пакеты
 
-### Distribution and deployment
+- `internal/zabbix/types.go`: `Host`, `Item`, `Value`, интерфейс API и ошибки JSON-RPC.
+- `internal/zabbix/client.go`: аутентифицированный транспорт JSON-RPC и типизированные методы API.
+- `internal/zabbix/client_test.go`: контракты запросов, современная/устаревшая аутентификация, декодирование, тайм-ауты и скрытие секретов.
+- `internal/discovery/select.go`: фильтрация регулярными выражениями и детерминированные лимиты на узел.
+- `internal/discovery/select_test.go`: тесты приоритета включения/исключения и лимитов.
+- `internal/discovery/snapshot.go`: атомарное хранилище неизменяемых снимков.
+- `internal/discovery/snapshot_test.go`: поведение копирования и замены.
+- `internal/metrics/name.go`: построение имён метрик, совместимых с Prometheus.
+- `internal/metrics/name_test.go`: табличные тесты нормализации и валидации.
+- `internal/metrics/builder.go`: преобразование Zabbix в `pmetric.Metrics`.
+- `internal/metrics/builder_test.go`: метрики gauge, значения, временные метки, атрибуты, описания и пропущенные значения.
 
-- `cmd/otelcol-zabbix/main.go`: Collector command entry point and build information.
-- `cmd/otelcol-zabbix/components.go`: receiver, processors, exporter, and extension factory maps.
-- `cmd/otelcol-zabbix/components_test.go`: exact embedded component inventory.
-- `configs/otelcol.yaml`: documented VictoriaMetrics pipeline example.
-- `Dockerfile`: multi-stage non-root distribution image.
-- `deployments/systemd/otelcol-zabbix.service`: hardened service unit.
-- `deployments/systemd/otelcol-zabbix.yaml`: VM Collector configuration.
-- `deployments/systemd/otelcol-zabbix.env.example`: credential and endpoint environment template.
-- `deployments/kubernetes/*.yaml`: namespace, Secret example, ConfigMap, Deployment, Service, and Kustomize inventory.
-- `compose.yaml`: complete Zabbix-to-VictoriaMetrics demo.
-- `demo/Dockerfile.tools`: pinned curl/jq utility image for bootstrap and verification jobs.
-- `demo/bootstrap.sh`: idempotent Zabbix object/token setup and generated Collector config.
-- `demo/producer.sh`: changing trapper values sent to Zabbix.
-- `demo/collector.yaml.tmpl`: short-interval receiver pipeline used only in the demo.
-- `demo/verify.sh`: VictoriaMetrics query and label assertions.
-- `internal/packaging/assets_test.go`: static assertions over service, Kubernetes, Docker, and Compose assets.
-- `README.md`, `docs/configuration.md`, `docs/deployment.md`: usage and operational documentation.
+### Сборка и развёртывание
+
+- `cmd/otelcol-zabbix/main.go`: точка входа команды Collector и информация о сборке.
+- `cmd/otelcol-zabbix/components.go`: карты фабрик приёмника, процессоров, экспортёра и расширений.
+- `cmd/otelcol-zabbix/components_test.go`: точный перечень встроенных компонентов.
+- `configs/otelcol.yaml`: документированный пример конвейера VictoriaMetrics.
+- `Dockerfile`: многоэтапный образ сборки с запуском без прав root.
+- `deployments/systemd/otelcol-zabbix.service`: служебный юнит с усиленной защитой.
+- `deployments/systemd/otelcol-zabbix.yaml`: конфигурация Collector для виртуальной машины.
+- `deployments/systemd/otelcol-zabbix.env.example`: шаблон окружения с учётными данными и адресами сервисов.
+- `deployments/kubernetes/*.yaml`: пространство имён, пример Secret, ConfigMap, Deployment, Service и перечень ресурсов Kustomize.
+- `compose.yaml`: полная демонстрация передачи данных из Zabbix в VictoriaMetrics.
+- `demo/Dockerfile.tools`: образ утилит curl/jq с закреплёнными версиями для заданий начальной настройки и проверки.
+- `demo/bootstrap.sh`: идемпотентная настройка объектов/токена Zabbix и генерация конфигурации Collector.
+- `demo/producer.sh`: отправка изменяющихся значений trapper в Zabbix.
+- `demo/collector.yaml.tmpl`: конвейер приёмника с короткими интервалами, используемый только в демонстрации.
+- `demo/verify.sh`: запрос к VictoriaMetrics и проверки меток.
+- `internal/packaging/assets_test.go`: статические проверки файлов службы, Kubernetes, Docker и Compose.
+- `README.md`, `docs/configuration.md`, `docs/deployment.md`: документация по использованию и эксплуатации.
 
 ---
 
-### Task 1: Go Module and Receiver Configuration Contract
+### Задача 1: модуль Go и контракт конфигурации приёмника
 
-**Files:**
-- Create: `go.mod`
-- Create: `.gitignore`
-- Create: `receiver/zabbixreceiver/config.go`
-- Test: `receiver/zabbixreceiver/config_test.go`
+**Файлы:**
+- Создать: `go.mod`
+- Создать: `.gitignore`
+- Создать: `receiver/zabbixreceiver/config.go`
+- Тест: `receiver/zabbixreceiver/config_test.go`
 
-**Interfaces:**
-- Produces: `type Config`, `createDefaultConfig() component.Config`, `func (c *Config) Clone() *Config`, `func (c *Config) ResolveEnv(getenv func(string) (string, bool)) error`, and `func (c *Config) Validate() error`. Public `Validate` resolves explicit receiver overrides on a clone and invokes a pure resolved-config validator without mutating its caller.
-- Produces exact nested types: `ScheduleConfig`, `JobsConfig`, `JobConfig`, `PromConfig`, `ZabbixConfig`, `LimitsConfig`, and `FiltersConfig`.
-- Uses `configopaque.String` for `ZabbixConfig.Token` so Collector config rendering redacts the credential.
+**Интерфейсы:**
+- Предоставляет: `type Config`, `createDefaultConfig() component.Config`, `func (c *Config) Clone() *Config`, `func (c *Config) ResolveEnv(getenv func(string) (string, bool)) error` и `func (c *Config) Validate() error`. Публичный метод `Validate` применяет явные переопределения приёмника к копии и вызывает чистый валидатор итоговой конфигурации, не изменяя исходный объект.
+- Предоставляет точный набор вложенных типов: `ScheduleConfig`, `JobsConfig`, `JobConfig`, `PromConfig`, `ZabbixConfig`, `LimitsConfig` и `FiltersConfig`.
+- Использует `configopaque.String` для `ZabbixConfig.Token`, чтобы при выводе конфигурации Collector учётные данные скрывались.
 
-- [ ] **Step 1: Initialize the module with pinned Collector APIs**
+- [ ] **Шаг 1: инициализировать модуль с закреплёнными API Collector**
 
-Run:
+Выполнить:
 
 ```bash
 go mod init github.com/aleksandr/zabbix-otel
@@ -105,11 +107,11 @@ go get go.opentelemetry.io/collector/receiver@v1.59.0
 go get github.com/stretchr/testify@v1.11.1
 ```
 
-Expected: `go.mod` declares Go 1.25 or newer and contains the requested module versions.
+Ожидается: `go.mod` объявляет Go 1.25 или новее и содержит требуемые версии модулей.
 
-- [ ] **Step 2: Write failing defaults, environment, and validation tests**
+- [ ] **Шаг 2: написать падающие тесты значений по умолчанию, окружения и валидации**
 
-Create table-driven tests with these exact assertions:
+Создать табличные тесты со следующими точными проверками:
 
 ```go
 func TestCreateDefaultConfig(t *testing.T) {
@@ -147,19 +149,19 @@ func validConfig() *Config {
 }
 ```
 
-Validation cases must assert field-specific errors for missing URL, non-HTTP URL, empty token, negative jitter, enabled job with non-positive interval or timeout, invalid regex, non-positive limits, invalid metric prefix, and both jobs disabled. Environment parsing cases must cover invalid duration and integer strings.
+Сценарии валидации должны проверять ошибки с указанием поля для отсутствующего URL, URL с протоколом не HTTP, пустого токена, отрицательной случайной задержки, включённого задания с неположительным интервалом или тайм-аутом, некорректного регулярного выражения, неположительных лимитов, некорректного префикса метрик и отключения обоих заданий. Сценарии разбора окружения должны охватывать некорректные строки длительности и целых чисел.
 
-Add `TestCloneDoesNotAliasConstLabels`: mutate the clone's `Prom.ConstLabels` and assert the original map is unchanged.
+Добавить `TestCloneDoesNotAliasConstLabels`: изменить `Prom.ConstLabels` копии и убедиться, что исходная карта не изменилась.
 
-- [ ] **Step 3: Run the tests and confirm the red state**
+- [ ] **Шаг 3: запустить тесты и подтвердить красное состояние**
 
-Run: `go test ./receiver/zabbixreceiver -run 'Test(CreateDefaultConfig|ResolveEnv|Validate)' -count=1`
+Выполнить: `go test ./receiver/zabbixreceiver -run 'Test(CreateDefaultConfig|ResolveEnv|Validate)' -count=1`
 
-Expected: FAIL because the configuration types and functions do not exist.
+Ожидается: FAIL, поскольку типы и функции конфигурации ещё не существуют.
 
-- [ ] **Step 4: Implement the minimal configuration contract**
+- [ ] **Шаг 4: реализовать минимальный контракт конфигурации**
 
-Use `mapstructure` tags matching the approved YAML exactly:
+Использовать теги `mapstructure`, точно соответствующие утверждённому YAML:
 
 ```go
 type Config struct {
@@ -189,20 +191,20 @@ type ZabbixConfig struct {
 }
 ```
 
-`Clone` copies the struct and deep-copies `Prom.ConstLabels`. `ResolveEnv` must parse with `time.ParseDuration` and `strconv.Atoi`, leave fields unchanged when a variable is unset, and return messages naming the invalid environment variable. Public `Validate` clones, resolves with `os.LookupEnv`, and invokes a pure validator for the resolved clone. Resolved validation must require a positive `zabbix.timeout`, compile all four regex fields, require a final metric name compatible with `[a-zA-Z_:][a-zA-Z0-9_:]*`, and aggregate independent field errors with `errors.Join`.
+`Clone` копирует структуру и создаёт глубокую копию `Prom.ConstLabels`. `ResolveEnv` должен разбирать значения через `time.ParseDuration` и `strconv.Atoi`, оставлять поля неизменными, если переменная не задана, и возвращать сообщения с именем некорректной переменной окружения. Публичный `Validate` создаёт копию, применяет окружение через `os.LookupEnv` и вызывает чистый валидатор для полученной копии. Валидация итоговой конфигурации должна требовать положительный `zabbix.timeout`, компилировать все четыре поля регулярных выражений, требовать итоговое имя метрики, совместимое с `[a-zA-Z_:][a-zA-Z0-9_:]*`, и объединять независимые ошибки полей через `errors.Join`.
 
-- [ ] **Step 5: Run focused and package tests**
+- [ ] **Шаг 5: запустить целевые тесты и тесты пакета**
 
-Run:
+Выполнить:
 
 ```bash
 go test ./receiver/zabbixreceiver -count=1
 go test ./... -count=1
 ```
 
-Expected: PASS.
+Ожидается: PASS.
 
-- [ ] **Step 6: Commit the configuration contract**
+- [ ] **Шаг 6: закоммитить контракт конфигурации**
 
 ```bash
 git add go.mod go.sum .gitignore receiver/zabbixreceiver/config.go receiver/zabbixreceiver/config_test.go
@@ -211,15 +213,15 @@ git commit -m "feat: define Zabbix receiver configuration"
 
 ---
 
-### Task 2: Typed Zabbix JSON-RPC Client
+### Задача 2: типизированный клиент Zabbix JSON-RPC
 
-**Files:**
-- Create: `internal/zabbix/types.go`
-- Create: `internal/zabbix/client.go`
-- Test: `internal/zabbix/client_test.go`
+**Файлы:**
+- Создать: `internal/zabbix/types.go`
+- Создать: `internal/zabbix/client.go`
+- Тест: `internal/zabbix/client_test.go`
 
-**Interfaces:**
-- Produces:
+**Интерфейсы:**
+- Предоставляет:
 
 ```go
 type API interface {
@@ -235,41 +237,41 @@ type ClientConfig struct { URL, Token string; Timeout time.Duration }
 func NewClient(ClientConfig, *http.Client) (*Client, error)
 ```
 
-- `Items` consumes host IDs; `Values` consumes item IDs. Empty ID slices return empty results without network calls.
-- Authentication begins with `Authorization: Bearer`; on a legacy Zabbix authentication error it retries once with the JSON-RPC `auth` property and caches the successful mode. This preserves Zabbix 5.x session-token compatibility without using deprecated auth on modern servers.
+- `Items` принимает идентификаторы узлов; `Values` принимает идентификаторы элементов данных. Пустые срезы идентификаторов возвращают пустой результат без сетевых вызовов.
+- Аутентификация начинается с `Authorization: Bearer`; при ошибке аутентификации старого Zabbix клиент повторяет запрос один раз со свойством JSON-RPC `auth` и кеширует успешный режим. Это сохраняет совместимость с токенами сеанса Zabbix 5.x без использования устаревшей аутентификации на современных серверах.
 
-- [ ] **Step 1: Write failing request-contract tests**
+- [ ] **Шаг 1: написать падающие тесты контракта запросов**
 
-Use `httptest.Server` to capture requests. Assert:
+Использовать `httptest.Server` для перехвата запросов. Проверить:
 
 ```go
 func TestHostsUsesBearerAndExactFields(t *testing.T) {
-    // Server asserts Content-Type application/json-rpc and Authorization Bearer secret.
-    // Decode body and assert method=host.get, output=[hostid,host], id is non-zero,
-    // and no auth property is present. Return two host objects.
+    // Сервер проверяет Content-Type application/json-rpc и Authorization Bearer secret.
+    // Декодировать тело и проверить method=host.get, output=[hostid,host], ненулевой id
+    // и отсутствие свойства auth. Вернуть два объекта узлов.
 }
 
 func TestItemsRequestsNumericItems(t *testing.T) {
-    // Assert item.get params contain output itemid,hostid,name,key_,value_type;
-    // hostids are the supplied IDs; filter.value_type is ["0","3"].
+    // Проверить, что параметры item.get содержат output itemid,hostid,name,key_,value_type;
+    // hostids совпадают с переданными идентификаторами; filter.value_type равен ["0","3"].
 }
 
 func TestValuesRequestsLastFields(t *testing.T) {
-    // Assert item.get params contain output itemid,lastvalue,lastclock and exact itemids.
+    // Проверить, что параметры item.get содержат output itemid,lastvalue,lastclock и точные itemids.
 }
 ```
 
-Add cases for empty slices, HTTP 503, malformed JSON, mismatched response ID, JSON-RPC error fields, context cancellation, client timeout, legacy auth retry/cache, and an invalid URL. Error strings must contain operation and safe endpoint but never the token.
+Добавить сценарии для пустых срезов, HTTP 503, некорректного JSON, несовпадения идентификатора ответа, полей ошибок JSON-RPC, отмены контекста, тайм-аута клиента, повтора/кеширования устаревшей аутентификации и некорректного URL. Строки ошибок должны содержать операцию и безопасный адрес сервиса, но никогда — токен.
 
-- [ ] **Step 2: Run the client tests and confirm failure**
+- [ ] **Шаг 2: запустить тесты клиента и подтвердить сбой**
 
-Run: `go test ./internal/zabbix -count=1`
+Выполнить: `go test ./internal/zabbix -count=1`
 
-Expected: FAIL because the package does not exist.
+Ожидается: FAIL, поскольку пакет ещё не существует.
 
-- [ ] **Step 3: Implement typed transport and methods**
+- [ ] **Шаг 3: реализовать типизированный транспорт и методы**
 
-Define an internal envelope with `json.RawMessage` result and a typed `RPCError`:
+Определить внутреннюю оболочку с результатом `json.RawMessage` и типизированной ошибкой `RPCError`:
 
 ```go
 type RPCError struct {
@@ -283,9 +285,9 @@ func (e *RPCError) Error() string {
 }
 ```
 
-The request body uses JSON-RPC `2.0`, an atomic numeric ID, the method, params, and only includes `auth` in legacy mode. Limit response bodies to 8 MiB, require HTTP 2xx, close every response body, verify response IDs, and wrap errors as `zabbix <method> at <scheme://host/path>: ...`.
+Тело запроса использует JSON-RPC `2.0`, атомарный числовой идентификатор, метод и параметры; `auth` включается только в устаревшем режиме. Ограничить тела ответов 8 МиБ, требовать HTTP 2xx, закрывать тело каждого ответа, проверять идентификаторы ответов и оборачивать ошибки в формат `zabbix <method> at <scheme://host/path>: ...`.
 
-Use these exact API params:
+Использовать следующие точные параметры API:
 
 ```go
 host.get: {"output": ["hostid", "host"], "sortfield": "hostid"}
@@ -302,9 +304,9 @@ item.get values: {
 }
 ```
 
-- [ ] **Step 4: Run tests, race tests, and vet for the client**
+- [ ] **Шаг 4: запустить тесты, проверку гонок и vet для клиента**
 
-Run:
+Выполнить:
 
 ```bash
 go test ./internal/zabbix -count=1
@@ -312,9 +314,9 @@ go test -race ./internal/zabbix -count=1
 go vet ./internal/zabbix
 ```
 
-Expected: PASS and no token appears in captured error text.
+Ожидается: PASS, токен не появляется в перехваченном тексте ошибок.
 
-- [ ] **Step 5: Commit the Zabbix client**
+- [ ] **Шаг 5: закоммитить клиент Zabbix**
 
 ```bash
 git add internal/zabbix
@@ -323,17 +325,17 @@ git commit -m "feat: add typed Zabbix API client"
 
 ---
 
-### Task 3: Discovery Filters, Limits, and Atomic Snapshots
+### Задача 3: фильтры обнаружения, лимиты и атомарные снимки
 
-**Files:**
-- Create: `internal/discovery/select.go`
-- Create: `internal/discovery/snapshot.go`
-- Test: `internal/discovery/select_test.go`
-- Test: `internal/discovery/snapshot_test.go`
+**Файлы:**
+- Создать: `internal/discovery/select.go`
+- Создать: `internal/discovery/snapshot.go`
+- Тест: `internal/discovery/select_test.go`
+- Тест: `internal/discovery/snapshot_test.go`
 
-**Interfaces:**
-- Consumes: `zabbix.Host` and `zabbix.Item` from Task 2.
-- Produces:
+**Интерфейсы:**
+- Принимает: `zabbix.Host` и `zabbix.Item` из задачи 2.
+- Предоставляет:
 
 ```go
 type Filters struct {
@@ -349,43 +351,43 @@ func (s *Store) Load() *Snapshot
 func (s *Store) Replace(*Snapshot)
 ```
 
-- [ ] **Step 1: Write failing selection tests**
+- [ ] **Шаг 1: написать падающие тесты отбора**
 
-Create table cases that prove:
+Создать табличные сценарии, доказывающие следующее:
 
 ```go
-// Hosts: prod-a, prod-a-backup, dev-a.
-// Include prod-.*, then exclude .*-backup => only prod-a.
-// Items: system.cpu.util, vm.memory.size, system.log.
-// Include system\..*|vm\..*, then exclude .*\.log => CPU and memory.
-// max=1 keeps the first Zabbix-sorted item per host and increments limited.
-// Items with unknown host IDs are filtered.
+// Узлы: prod-a, prod-a-backup, dev-a.
+// Включить prod-.*, затем исключить .*-backup => остаётся только prod-a.
+// Элементы: system.cpu.util, vm.memory.size, system.log.
+// Включить system\..*|vm\..*, затем исключить .*\.log => процессор и память.
+// max=1 сохраняет первый элемент каждого узла в порядке Zabbix и увеличивает limited.
+// Элементы с неизвестными идентификаторами узлов отфильтровываются.
 ```
 
-Snapshot tests must mutate the input slice after `NewSnapshot` and the slice returned from `Items`; neither mutation may affect stored content. A concurrent test runs repeated `Replace` and `Load` calls under the race detector.
+Тесты снимков должны изменять входной срез после `NewSnapshot` и срез, возвращённый `Items`; ни одно изменение не должно влиять на сохранённое содержимое. Конкурентный тест многократно вызывает `Replace` и `Load` под детектором гонок.
 
-- [ ] **Step 2: Run discovery tests and confirm failure**
+- [ ] **Шаг 2: запустить тесты обнаружения и подтвердить сбой**
 
-Run: `go test ./internal/discovery -count=1`
+Выполнить: `go test ./internal/discovery -count=1`
 
-Expected: FAIL because the package does not exist.
+Ожидается: FAIL, поскольку пакет ещё не существует.
 
-- [ ] **Step 3: Implement selection and immutable storage**
+- [ ] **Шаг 3: реализовать отбор и неизменяемое хранилище**
 
-Build a host-ID lookup, evaluate non-nil include expressions before excludes, count all removals in `filtered`, and count over-limit items in `limited`. Preserve the input item order. Implement `Store` with `atomic.Pointer[Snapshot]`; clone slices at snapshot construction and access boundaries.
+Создать индекс узлов по идентификаторам, проверять ненулевые выражения включения перед исключениями, учитывать все удаления в `filtered`, а элементы сверх лимита — в `limited`. Сохранить порядок входных элементов. Реализовать `Store` через `atomic.Pointer[Snapshot]`; копировать срезы при создании снимка и при доступе к нему.
 
-- [ ] **Step 4: Run normal and race tests**
+- [ ] **Шаг 4: запустить обычные тесты и проверку гонок**
 
-Run:
+Выполнить:
 
 ```bash
 go test ./internal/discovery -count=1
 go test -race ./internal/discovery -count=1
 ```
 
-Expected: PASS.
+Ожидается: PASS.
 
-- [ ] **Step 5: Commit discovery behavior**
+- [ ] **Шаг 5: закоммитить логику обнаружения**
 
 ```bash
 git add internal/discovery
@@ -394,17 +396,17 @@ git commit -m "feat: add Zabbix discovery snapshots"
 
 ---
 
-### Task 4: OpenTelemetry Metric Conversion
+### Задача 4: преобразование метрик OpenTelemetry
 
-**Files:**
-- Create: `internal/metrics/name.go`
-- Create: `internal/metrics/builder.go`
-- Test: `internal/metrics/name_test.go`
-- Test: `internal/metrics/builder_test.go`
+**Файлы:**
+- Создать: `internal/metrics/name.go`
+- Создать: `internal/metrics/builder.go`
+- Тест: `internal/metrics/name_test.go`
+- Тест: `internal/metrics/builder_test.go`
 
-**Interfaces:**
-- Consumes: `discovery.ItemMeta` and `zabbix.Value`.
-- Produces:
+**Интерфейсы:**
+- Принимает: `discovery.ItemMeta` и `zabbix.Value`.
+- Предоставляет:
 
 ```go
 func Name(prefix, itemKey string) (string, error)
@@ -413,9 +415,9 @@ type Stats struct { Emitted, Invalid, Missing int64 }
 func Build([]discovery.ItemMeta, []zabbix.Value, Config) (pmetric.Metrics, Stats)
 ```
 
-- [ ] **Step 1: Write failing name and conversion tests**
+- [ ] **Шаг 1: написать падающие тесты имён и преобразования**
 
-Name table:
+Таблица имён:
 
 ```go
 {"zabbix_", "system.cpu.util", "zabbix_system_cpu_util"}
@@ -424,40 +426,40 @@ Name table:
 {"zabbix_", "ends...", "zabbix_ends"}
 ```
 
-Builder test input contains one float, one unsigned integer, an invalid numeric value, a missing metadata value, and constant labels including a conflicting `host`. Assert that:
+Входные данные теста построителя содержат одно число с плавающей точкой, одно беззнаковое целое, некорректное числовое значение, значение без метаданных и постоянные метки, включая конфликтующую `host`. Проверить следующее:
 
-- Output has one resource-metrics and one scope-metrics entry.
-- The valid items are gauges with double values.
-- `lastclock=1700000000` becomes `pcommon.Timestamp(1700000000 * 1_000_000_000)`.
-- Description equals the Zabbix item display name.
-- `env=production` is present.
-- Reserved `host` comes from discovery, not constant labels.
-- `Stats` reports valid, invalid, and missing values precisely.
+- Результат содержит одну запись resource-metrics и одну запись scope-metrics.
+- Корректные элементы представлены метриками gauge со значениями double.
+- `lastclock=1700000000` преобразуется в `pcommon.Timestamp(1700000000 * 1_000_000_000)`.
+- Описание совпадает с отображаемым именем элемента данных Zabbix.
+- Присутствует `env=production`.
+- Зарезервированный атрибут `host` берётся из обнаружения, а не из постоянных меток.
+- `Stats` точно учитывает корректные, некорректные и отсутствующие значения.
 
-- [ ] **Step 2: Run conversion tests and confirm failure**
+- [ ] **Шаг 2: запустить тесты преобразования и подтвердить сбой**
 
-Run: `go test ./internal/metrics -count=1`
+Выполнить: `go test ./internal/metrics -count=1`
 
-Expected: FAIL because the package does not exist.
+Ожидается: FAIL, поскольку пакет ещё не существует.
 
-- [ ] **Step 3: Implement name construction and pdata building**
+- [ ] **Шаг 3: реализовать построение имён и данных pdata**
 
-Sanitize the item key rune-by-rune, replacing characters outside `[a-zA-Z0-9_:]` with `_`, trimming trailing underscores, and ensuring the combined first character matches `[a-zA-Z_:]`. Return an error if no valid name remains.
+Нормализовать ключ элемента посимвольно, заменяя символы вне `[a-zA-Z0-9_:]` на `_`, удаляя завершающие подчёркивания и обеспечивая соответствие первого символа итогового имени `[a-zA-Z_:]`. Возвращать ошибку, если корректного имени не осталось.
 
-Build one metric per matched item value. Set scope name to the supplied value, metric name/description, gauge data point value and timestamp, then add constant attributes before overwriting the four reserved attributes. Parse values with `strconv.ParseFloat` and timestamps with `strconv.ParseInt`.
+Создавать одну метрику для каждого значения, сопоставленного с элементом. Установить переданное имя области инструментирования, имя/описание метрики, значение и временную метку точки gauge, затем добавить постоянные атрибуты и перезаписать четыре зарезервированных атрибута. Разбирать значения через `strconv.ParseFloat`, а временные метки — через `strconv.ParseInt`.
 
-- [ ] **Step 4: Run conversion tests and all internal tests**
+- [ ] **Шаг 4: запустить тесты преобразования и все внутренние тесты**
 
-Run:
+Выполнить:
 
 ```bash
 go test ./internal/metrics -count=1
 go test ./internal/... -count=1
 ```
 
-Expected: PASS.
+Ожидается: PASS.
 
-- [ ] **Step 5: Commit conversion**
+- [ ] **Шаг 5: закоммитить преобразование**
 
 ```bash
 git add internal/metrics go.mod go.sum
@@ -466,17 +468,17 @@ git commit -m "feat: convert Zabbix values to OTel metrics"
 
 ---
 
-### Task 5: Dual-Job Scheduler and Receiver Lifecycle
+### Задача 5: планировщик двух заданий и жизненный цикл приёмника
 
-**Files:**
-- Create: `receiver/zabbixreceiver/scheduler.go`
-- Create: `receiver/zabbixreceiver/receiver.go`
-- Test: `receiver/zabbixreceiver/scheduler_test.go`
-- Test: `receiver/zabbixreceiver/receiver_test.go`
+**Файлы:**
+- Создать: `receiver/zabbixreceiver/scheduler.go`
+- Создать: `receiver/zabbixreceiver/receiver.go`
+- Тест: `receiver/zabbixreceiver/scheduler_test.go`
+- Тест: `receiver/zabbixreceiver/receiver_test.go`
 
-**Interfaces:**
-- Consumes: Task 1 config, `zabbix.API`, `discovery.Store`, `discovery.Select`, `metrics.Build`, and downstream `consumer.Metrics`.
-- Produces an unexported receiver implementing `receiver.Metrics`:
+**Интерфейсы:**
+- Принимает: конфигурацию из задачи 1, `zabbix.API`, `discovery.Store`, `discovery.Select`, `metrics.Build` и последующий `consumer.Metrics`.
+- Предоставляет неэкспортируемый приёмник, реализующий `receiver.Metrics`:
 
 ```go
 type zabbixReceiver struct { /* config, API, next consumer, store, cancellation, wait group */ }
@@ -487,9 +489,9 @@ func (r *zabbixReceiver) discover(context.Context) error
 func (r *zabbixReceiver) values(context.Context) error
 ```
 
-- [ ] **Step 1: Write failing pure scheduler tests**
+- [ ] **Шаг 1: написать падающие тесты чистой логики планировщика**
 
-Extract injectable functions:
+Выделить внедряемые функции:
 
 ```go
 type timerFunc func(context.Context, time.Duration) error
@@ -497,18 +499,18 @@ type jitterFunc func(time.Duration) time.Duration
 func runJob(context.Context, JobConfig, time.Duration, timerFunc, jitterFunc, func(context.Context) error, func(error))
 ```
 
-Tests must prove the delay sequence:
+Тесты должны подтверждать последовательность задержек:
 
-- `run_on_start=true`: jitter, run, interval, jitter, run.
-- `run_on_start=false`: interval, jitter, run.
-- Every run receives its own timeout context.
-- Cancellation stops before another run.
-- A blocked run cannot overlap itself.
-- Errors reach the reporting callback and do not stop later cycles.
+- `run_on_start=true`: случайная задержка, запуск, интервал, случайная задержка, запуск.
+- `run_on_start=false`: интервал, случайная задержка, запуск.
+- Каждый запуск получает собственный контекст с тайм-аутом.
+- Отмена останавливает цикл до следующего запуска.
+- Заблокированный запуск не может перекрываться с другим запуском того же задания.
+- Ошибки передаются в функцию обратного вызова для отчётности и не останавливают последующие циклы.
 
-- [ ] **Step 2: Write failing receiver-operation tests**
+- [ ] **Шаг 2: написать падающие тесты операций приёмника**
 
-Use a fake `zabbix.API` and recording `consumer.Metrics`. Cover:
+Использовать подставной `zabbix.API` и записывающий `consumer.Metrics`. Покрыть:
 
 ```go
 func TestDiscoverReplacesSnapshotOnlyAfterSuccess(t *testing.T)
@@ -520,25 +522,25 @@ func TestValuesReturnsConsumerError(t *testing.T)
 func TestStartAndShutdownStopAllJobs(t *testing.T)
 ```
 
-For chunking, configure `items_per_request=2`, seed five items, and assert request sizes `2,2,1` plus one downstream batch containing five points.
+Для разбиения на порции настроить `items_per_request=2`, подготовить пять элементов и проверить размеры запросов `2,2,1`, а также один пакет из пяти точек, переданный следующему компоненту.
 
-- [ ] **Step 3: Run receiver tests and confirm failure**
+- [ ] **Шаг 3: запустить тесты приёмника и подтвердить сбой**
 
-Run: `go test ./receiver/zabbixreceiver -run 'Test(Discover|Values|Start|RunJob)' -count=1`
+Выполнить: `go test ./receiver/zabbixreceiver -run 'Test(Discover|Values|Start|RunJob)' -count=1`
 
-Expected: FAIL because lifecycle and scheduler functions do not exist.
+Ожидается: FAIL, поскольку функции жизненного цикла и планировщика ещё не существуют.
 
-- [ ] **Step 4: Implement scheduler and receiver operations**
+- [ ] **Шаг 4: реализовать планировщик и операции приёмника**
 
-`Start` derives one cancellable lifetime context, starts only enabled loops, and records two wait-group entries. `Shutdown` cancels once and returns either when the wait group finishes or when the caller context expires.
+`Start` создаёт один отменяемый контекст жизненного цикла, запускает только включённые циклы и добавляет две записи в группу ожидания. `Shutdown` выполняет отмену один раз и возвращается либо после завершения группы ожидания, либо по истечении контекста вызывающей стороны.
 
-`discover` calls `Hosts`, collects their IDs, calls `Items`, compiles configured filters once during construction, selects metadata, and replaces the store only after both calls succeed.
+`discover` вызывает `Hosts`, собирает их идентификаторы, вызывает `Items`, компилирует настроенные фильтры один раз при создании, отбирает метаданные и заменяет хранилище только после успеха обоих вызовов.
 
-`values` clones snapshot items, loops over exact chunks, accumulates all returned values, aborts on any request error, builds metrics, skips downstream delivery when no valid points exist, and otherwise calls `ConsumeMetrics` once.
+`values` копирует элементы снимка, перебирает точные порции, накапливает все полученные значения, прерывается при любой ошибке запроса, строит метрики, пропускает доставку следующему компоненту при отсутствии корректных точек и в остальных случаях вызывает `ConsumeMetrics` один раз.
 
-- [ ] **Step 5: Run receiver, race, and repository tests**
+- [ ] **Шаг 5: запустить тесты приёмника, проверку гонок и тесты репозитория**
 
-Run:
+Выполнить:
 
 ```bash
 go test ./receiver/zabbixreceiver -count=1
@@ -546,9 +548,9 @@ go test -race ./receiver/zabbixreceiver -count=1
 go test ./... -count=1
 ```
 
-Expected: PASS with no goroutine leak or race report.
+Ожидается: PASS без утечек горутин и сообщений о гонках.
 
-- [ ] **Step 6: Commit receiver runtime**
+- [ ] **Шаг 6: закоммитить рабочую логику приёмника**
 
 ```bash
 git add receiver/zabbixreceiver
@@ -557,19 +559,19 @@ git commit -m "feat: run Zabbix discovery and values jobs"
 
 ---
 
-### Task 6: Collector Factory, Self-Telemetry, and HTTP-Fixture Integration
+### Задача 6: фабрика Collector, собственная телеметрия и интеграция с HTTP-стендом
 
-**Files:**
-- Create: `receiver/zabbixreceiver/factory.go`
-- Create: `receiver/zabbixreceiver/telemetry.go`
-- Test: `receiver/zabbixreceiver/factory_test.go`
-- Test: `receiver/zabbixreceiver/telemetry_test.go`
-- Modify: `receiver/zabbixreceiver/receiver.go`
-- Modify: `receiver/zabbixreceiver/receiver_test.go`
+**Файлы:**
+- Создать: `receiver/zabbixreceiver/factory.go`
+- Создать: `receiver/zabbixreceiver/telemetry.go`
+- Тест: `receiver/zabbixreceiver/factory_test.go`
+- Тест: `receiver/zabbixreceiver/telemetry_test.go`
+- Изменить: `receiver/zabbixreceiver/receiver.go`
+- Изменить: `receiver/zabbixreceiver/receiver_test.go`
 
-**Interfaces:**
-- Produces: `func NewFactory() receiver.Factory` for component type `zabbix` with development metrics stability.
-- Produces unexported telemetry instruments named:
+**Интерфейсы:**
+- Предоставляет: `func NewFactory() receiver.Factory` для типа компонента `zabbix` со стабильностью метрик уровня development.
+- Предоставляет неэкспортируемые инструменты телеметрии с именами:
   - `otelcol_receiver_zabbix_discover_attempts`
   - `otelcol_receiver_zabbix_discover_errors`
   - `otelcol_receiver_zabbix_discover_duration`
@@ -581,29 +583,29 @@ git commit -m "feat: run Zabbix discovery and values jobs"
   - `otelcol_receiver_zabbix_filtered_items`
   - `otelcol_receiver_zabbix_limited_items`
 
-This exact ten-instrument list is the authoritative telemetry acceptance surface. Attempts and durations cover every respective cycle; errors cover cycles returning errors; emitted points count valid built gauges before the consumer returns; invalid values count malformed numbers, invalid timestamps, and unusable metric names; filtered and limited counts follow discovery selection. Do not infer separate success, host-count, item-count, requested-item, or downstream-failure instruments.
+Этот точный список из десяти инструментов является обязательным контрактом приёмки телеметрии. Попытки и длительности охватывают каждый соответствующий цикл; ошибки — циклы, вернувшие ошибку; выданные точки учитывают корректно построенные gauge до возврата потребителя; некорректные значения включают неверные числа, временные метки и непригодные имена метрик; счётчики отфильтрованных и ограниченных элементов соответствуют отбору при обнаружении. Не добавлять отдельные инструменты для успешных операций, числа узлов, числа элементов, запрошенных элементов или сбоев следующего компонента.
 
-- [ ] **Step 1: Write failing factory and telemetry tests**
+- [ ] **Шаг 1: написать падающие тесты фабрики и телеметрии**
 
-Assert `NewFactory().Type().String() == "zabbix"`, default config equality, and successful creation with `receivertest.NewNopSettings`. Use the SDK manual reader to assert one discover attempt, one emitted-point count, and one duration sample after recording.
+Проверить `NewFactory().Type().String() == "zabbix"`, равенство конфигураций по умолчанию и успешное создание с `receivertest.NewNopSettings`. Использовать ручной считыватель SDK, чтобы после записи проверить одну попытку обнаружения, одну выданную точку и один замер длительности.
 
-- [ ] **Step 2: Write the in-process integration test**
+- [ ] **Шаг 2: написать интеграционный тест внутри процесса**
 
-Start one `httptest.Server` that responds to `host.get` and the two forms of `item.get`. Construct the receiver through the factory with 5 ms job intervals, use a recording consumer, start it, and require an emitted metric within two seconds. Assert exact name, value, timestamp, and attributes, then shut down and assert the request count stops changing.
+Запустить один `httptest.Server`, отвечающий на `host.get` и две формы `item.get`. Создать приёмник через фабрику с интервалами заданий 5 мс, использовать записывающий потребитель, запустить приёмник и потребовать выдачу метрики в течение двух секунд. Проверить точные имя, значение, временную метку и атрибуты, затем остановить приёмник и убедиться, что число запросов перестало меняться.
 
-- [ ] **Step 3: Run integration tests and confirm failure**
+- [ ] **Шаг 3: запустить интеграционные тесты и подтвердить сбой**
 
-Run: `go test ./receiver/zabbixreceiver -run 'Test(NewFactory|Telemetry|ReceiverHTTPIntegration)' -count=1`
+Выполнить: `go test ./receiver/zabbixreceiver -run 'Test(NewFactory|Telemetry|ReceiverHTTPIntegration)' -count=1`
 
-Expected: FAIL because the factory and telemetry do not exist.
+Ожидается: FAIL, поскольку фабрика и телеметрия ещё не существуют.
 
-- [ ] **Step 4: Implement factory and telemetry wiring**
+- [ ] **Шаг 4: реализовать фабрику и подключение телеметрии**
 
-Factory construction must type-check `*Config`, clone before environment resolution, call `ResolveEnv(os.LookupEnv)`, invoke only the pure resolved-config validator, build the HTTP client, initialize telemetry, and call `newReceiver`. Receiver operations record attempts and durations once per cycle, error counters on returned errors, discovery selection counters, and conversion counters.
+Создание через фабрику должно проверять тип `*Config`, создавать копию перед применением окружения, вызывать `ResolveEnv(os.LookupEnv)`, вызывать только чистый валидатор итоговой конфигурации, создавать HTTP-клиент, инициализировать телеметрию и вызывать `newReceiver`. Операции приёмника записывают попытки и длительности один раз за цикл, счётчики ошибок при возврате ошибок, счётчики отбора при обнаружении и счётчики преобразования.
 
-- [ ] **Step 5: Run all Go quality checks**
+- [ ] **Шаг 5: выполнить все проверки качества Go**
 
-Run:
+Выполнить:
 
 ```bash
 gofmt -w receiver internal
@@ -612,9 +614,9 @@ go test -race ./... -count=1
 go vet ./...
 ```
 
-Expected: all commands pass.
+Ожидается: все команды завершаются успешно.
 
-- [ ] **Step 6: Commit the public Collector component**
+- [ ] **Шаг 6: закоммитить публичный компонент Collector**
 
 ```bash
 git add receiver/zabbixreceiver go.mod go.sum
@@ -623,23 +625,23 @@ git commit -m "feat: expose Zabbix Collector receiver"
 
 ---
 
-### Task 7: Custom Collector Distribution and Sample Pipeline
+### Задача 7: специализированная сборка Collector и пример конвейера
 
-**Files:**
-- Create: `cmd/otelcol-zabbix/main.go`
-- Create: `cmd/otelcol-zabbix/components.go`
-- Test: `cmd/otelcol-zabbix/components_test.go`
-- Create: `configs/otelcol.yaml`
-- Create: `Makefile`
+**Файлы:**
+- Создать: `cmd/otelcol-zabbix/main.go`
+- Создать: `cmd/otelcol-zabbix/components.go`
+- Тест: `cmd/otelcol-zabbix/components_test.go`
+- Создать: `configs/otelcol.yaml`
+- Создать: `Makefile`
 
-**Interfaces:**
-- Consumes: `zabbixreceiver.NewFactory()`.
-- Embeds the standard `batch`, `memory_limiter`, `prometheusremotewrite`, and `health_check` factories at v0.153.0.
-- Produces binary `bin/otelcol-zabbix`.
+**Интерфейсы:**
+- Принимает: `zabbixreceiver.NewFactory()`.
+- Включает стандартные фабрики `batch`, `memory_limiter`, `prometheusremotewrite` и `health_check` версии v0.153.0.
+- Создаёт бинарный файл `bin/otelcol-zabbix`.
 
-- [ ] **Step 1: Add distribution dependencies and failing inventory test**
+- [ ] **Шаг 1: добавить зависимости сборки и падающий тест перечня компонентов**
 
-Run:
+Выполнить:
 
 ```bash
 go get go.opentelemetry.io/collector/otelcol@v0.153.0
@@ -649,21 +651,21 @@ go get github.com/open-telemetry/opentelemetry-collector-contrib/exporter/promet
 go get github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension@v0.153.0
 ```
 
-Write `TestComponents` to call `components()` and assert exact map keys: receivers `zabbix`; processors `batch,memory_limiter`; exporters `prometheusremotewrite`; extensions `health_check`.
+Написать `TestComponents`, вызывающий `components()` и проверяющий точные ключи карт: приёмники `zabbix`; процессоры `batch,memory_limiter`; экспортёры `prometheusremotewrite`; расширения `health_check`.
 
-- [ ] **Step 2: Run the inventory test and confirm failure**
+- [ ] **Шаг 2: запустить тест перечня компонентов и подтвердить сбой**
 
-Run: `go test ./cmd/otelcol-zabbix -count=1`
+Выполнить: `go test ./cmd/otelcol-zabbix -count=1`
 
-Expected: FAIL because `components()` does not exist.
+Ожидается: FAIL, поскольку `components()` ещё не существует.
 
-- [ ] **Step 3: Implement the Collector command**
+- [ ] **Шаг 3: реализовать команду Collector**
 
-Build factory maps with the Collector `MakeFactoryMap` helpers. `main.go` calls `otelcol.NewCommand` with build info command `otelcol-zabbix`, description `OpenTelemetry Collector with Zabbix receiver`, version injected from `-ldflags`, and `components` as the factory callback. Exit non-zero on command failure.
+Создать карты фабрик с помощью функций Collector `MakeFactoryMap`. `main.go` вызывает `otelcol.NewCommand` с информацией о сборке: команда `otelcol-zabbix`, описание `OpenTelemetry Collector with Zabbix receiver`, версия, переданная через `-ldflags`, и `components` как функция обратного вызова фабрик. При сбое команды завершаться с ненулевым кодом.
 
-- [ ] **Step 4: Add the production sample configuration**
+- [ ] **Шаг 4: добавить пример конфигурации для эксплуатации**
 
-`configs/otelcol.yaml` must configure:
+`configs/otelcol.yaml` должен настраивать:
 
 ```yaml
 extensions:
@@ -700,13 +702,13 @@ service:
       exporters: [prometheusremotewrite]
 ```
 
-- [ ] **Step 5: Add repeatable Make targets**
+- [ ] **Шаг 5: добавить воспроизводимые цели Make**
 
-Create targets `fmt`, `test`, `test-race`, `vet`, `build`, `validate-config`, `docker-build`, `compose-config`, `demo-up`, `demo-verify`, and `demo-down`. `build` writes `bin/otelcol-zabbix`; `validate-config` supplies non-secret dummy environment values and invokes `bin/otelcol-zabbix validate --config configs/otelcol.yaml`.
+Создать цели `fmt`, `test`, `test-race`, `vet`, `build`, `validate-config`, `docker-build`, `compose-config`, `demo-up`, `demo-verify` и `demo-down`. `build` записывает `bin/otelcol-zabbix`; `validate-config` задаёт фиктивные несекретные значения окружения и вызывает `bin/otelcol-zabbix validate --config configs/otelcol.yaml`.
 
-- [ ] **Step 6: Build and validate the distribution**
+- [ ] **Шаг 6: собрать и проверить сборку**
 
-Run:
+Выполнить:
 
 ```bash
 make fmt
@@ -717,9 +719,9 @@ make validate-config
 bin/otelcol-zabbix components
 ```
 
-Expected: build and validation pass; component output contains `zabbix` and `prometheusremotewrite`.
+Ожидается: сборка и валидация проходят успешно; вывод компонентов содержит `zabbix` и `prometheusremotewrite`.
 
-- [ ] **Step 7: Commit the distribution**
+- [ ] **Шаг 7: закоммитить сборку**
 
 ```bash
 git add cmd configs Makefile go.mod go.sum
@@ -728,56 +730,56 @@ git commit -m "feat: build custom Zabbix Collector distribution"
 
 ---
 
-### Task 8: Container, systemd, and Kubernetes Packaging
+### Задача 8: упаковка для контейнера, systemd и Kubernetes
 
-**Files:**
-- Create: `Dockerfile`
-- Create: `.dockerignore`
-- Create: `deployments/systemd/otelcol-zabbix.service`
-- Create: `deployments/systemd/otelcol-zabbix.yaml`
-- Create: `deployments/systemd/otelcol-zabbix.env.example`
-- Create: `deployments/kubernetes/namespace.yaml`
-- Create: `deployments/kubernetes/secret.example.yaml`
-- Create: `deployments/kubernetes/configmap.yaml`
-- Create: `deployments/kubernetes/deployment.yaml`
-- Create: `deployments/kubernetes/service.yaml`
-- Create: `deployments/kubernetes/kustomization.yaml`
-- Test: `internal/packaging/assets_test.go`
+**Файлы:**
+- Создать: `Dockerfile`
+- Создать: `.dockerignore`
+- Создать: `deployments/systemd/otelcol-zabbix.service`
+- Создать: `deployments/systemd/otelcol-zabbix.yaml`
+- Создать: `deployments/systemd/otelcol-zabbix.env.example`
+- Создать: `deployments/kubernetes/namespace.yaml`
+- Создать: `deployments/kubernetes/secret.example.yaml`
+- Создать: `deployments/kubernetes/configmap.yaml`
+- Создать: `deployments/kubernetes/deployment.yaml`
+- Создать: `deployments/kubernetes/service.yaml`
+- Создать: `deployments/kubernetes/kustomization.yaml`
+- Тест: `internal/packaging/assets_test.go`
 
-**Interfaces:**
-- Produces OCI image `zabbix-otel-collector:local` with entrypoint `/otelcol-zabbix` and default config `/etc/otelcol-zabbix/config.yaml`.
-- Produces systemd service user/group `otelcol-zabbix` and Kubernetes workload `otelcol-zabbix` in namespace `observability`.
+**Интерфейсы:**
+- Создаёт образ OCI `zabbix-otel-collector:local` с точкой входа `/otelcol-zabbix` и конфигурацией по умолчанию `/etc/otelcol-zabbix/config.yaml`.
+- Создаёт пользователя/группу службы systemd `otelcol-zabbix` и рабочую нагрузку Kubernetes `otelcol-zabbix` в пространстве имён `observability`.
 
-- [ ] **Step 1: Write failing static asset tests**
+- [ ] **Шаг 1: написать падающие статические тесты файлов развёртывания**
 
-Tests read repository-root files and assert:
+Тесты читают файлы от корня репозитория и проверяют:
 
-- Dockerfile has a Go build stage, numeric non-root `USER 10001:10001`, and no token value.
-- systemd unit has `User=otelcol-zabbix`, `EnvironmentFile=/etc/otelcol-zabbix/otelcol-zabbix.env`, `Restart=on-failure`, `NoNewPrivileges=true`, `ProtectSystem=strict`, and exact `ExecStart`.
-- Kubernetes Deployment has `runAsNonRoot: true`, `readOnlyRootFilesystem: true`, dropped capabilities, health probes on 13133, resource requests/limits, Secret references, and no RBAC objects.
-- Kustomization lists namespace, Secret example, ConfigMap, Deployment, and Service.
+- Dockerfile содержит этап сборки Go, числовой непривилегированный `USER 10001:10001` и не содержит значения токена.
+- Юнит systemd содержит `User=otelcol-zabbix`, `EnvironmentFile=/etc/otelcol-zabbix/otelcol-zabbix.env`, `Restart=on-failure`, `NoNewPrivileges=true`, `ProtectSystem=strict` и точный `ExecStart`.
+- Kubernetes Deployment содержит `runAsNonRoot: true`, `readOnlyRootFilesystem: true`, сброшенные capabilities, проверки состояния на порту 13133, запросы/лимиты ресурсов, ссылки на Secret и не содержит объектов RBAC.
+- Kustomization перечисляет пространство имён, пример Secret, ConfigMap, Deployment и Service.
 
-- [ ] **Step 2: Run packaging tests and confirm failure**
+- [ ] **Шаг 2: запустить тесты упаковки и подтвердить сбой**
 
-Run: `go test ./internal/packaging -count=1`
+Выполнить: `go test ./internal/packaging -count=1`
 
-Expected: FAIL because assets do not exist.
+Ожидается: FAIL, поскольку файлы развёртывания ещё не существуют.
 
-- [ ] **Step 3: Implement the non-root container**
+- [ ] **Шаг 3: реализовать контейнер без прав root**
 
-Use `golang:1.25-alpine` as builder and `gcr.io/distroless/static-debian13:nonroot` as runtime. Build with `CGO_ENABLED=0`, `-trimpath`, and stripped linker flags. Copy the binary plus `configs/otelcol.yaml`; run as numeric UID/GID 10001 and expose 13133 and 8888.
+Использовать `golang:1.25-alpine` для сборки и `gcr.io/distroless/static-debian13:nonroot` для запуска. Собирать с `CGO_ENABLED=0`, `-trimpath` и флагами компоновщика для удаления отладочной информации. Копировать бинарный файл и `configs/otelcol.yaml`; запускать с числовыми UID/GID 10001 и объявить порты 13133 и 8888.
 
-- [ ] **Step 4: Implement VM deployment assets**
+- [ ] **Шаг 4: реализовать файлы развёртывания на виртуальной машине**
 
-The unit reads `/etc/otelcol-zabbix/otelcol-zabbix.env`, executes `/usr/local/bin/otelcol-zabbix --config=/etc/otelcol-zabbix/config.yaml`, uses a dedicated state directory, and applies the hardening asserted by tests. The environment template defines `ZABBIX_URL`, `ZABBIX_TOKEN`, and `VICTORIAMETRICS_REMOTE_WRITE_URL` with safe example values.
+Юнит читает `/etc/otelcol-zabbix/otelcol-zabbix.env`, выполняет `/usr/local/bin/otelcol-zabbix --config=/etc/otelcol-zabbix/config.yaml`, использует отдельный каталог состояния и применяет меры защиты, проверяемые тестами. Шаблон окружения определяет `ZABBIX_URL`, `ZABBIX_TOKEN` и `VICTORIAMETRICS_REMOTE_WRITE_URL` с безопасными примерами значений.
 
-- [ ] **Step 5: Implement Kubernetes assets**
+- [ ] **Шаг 5: реализовать файлы Kubernetes**
 
-The Deployment has one replica, rolling updates, the custom image, environment values from Secret/ConfigMap, config volume, port 13133, HTTP `/` probes, 100m/128Mi requests, 500m/512Mi limits, and 30-second termination grace. The Service is `ClusterIP` and exposes only health and internal telemetry. No ClusterRole, Role, or service-account token mount is needed.
+Deployment содержит одну реплику, последовательные обновления, специализированный образ, значения окружения из Secret/ConfigMap, том конфигурации, порт 13133, HTTP-проверки `/`, запросы ресурсов 100m/128Mi, лимиты 500m/512Mi и 30 секунд на корректное завершение. Service имеет тип `ClusterIP` и публикует только проверку состояния и внутреннюю телеметрию. ClusterRole, Role и подключение токена служебной учётной записи не требуются.
 
-- [ ] **Step 6: Validate packaging**
+- [ ] **Шаг 6: проверить упаковку**
 
-Run:
+Выполнить:
 
 ```bash
 go test ./internal/packaging -count=1
@@ -786,9 +788,9 @@ kubectl kustomize deployments/kubernetes >/tmp/zabbix-otel-rendered.yaml
 systemd-analyze verify deployments/systemd/otelcol-zabbix.service
 ```
 
-Expected: tests and available validators pass; Docker image reports user `10001:10001`. If `systemd-analyze` is unavailable on the development OS, run it inside a current Debian systemd container and record that command in verification notes.
+Ожидается: тесты и доступные валидаторы проходят успешно; образ Docker сообщает пользователя `10001:10001`. Если `systemd-analyze` недоступен в ОС разработки, запустить его внутри актуального контейнера Debian с systemd и записать команду в заметках о проверке.
 
-- [ ] **Step 7: Commit deployment packaging**
+- [ ] **Шаг 7: закоммитить упаковку для развёртывания**
 
 ```bash
 git add Dockerfile .dockerignore deployments internal/packaging
@@ -797,43 +799,43 @@ git commit -m "feat: package Collector for VM and Kubernetes"
 
 ---
 
-### Task 9: Real Zabbix-to-VictoriaMetrics Docker Compose Demo
+### Задача 9: демонстрация реальной передачи из Zabbix в VictoriaMetrics через Docker Compose
 
-**Files:**
-- Create: `compose.yaml`
-- Create: `demo/Dockerfile.tools`
-- Create: `demo/bootstrap.sh`
-- Create: `demo/producer.sh`
-- Create: `demo/collector.yaml.tmpl`
-- Create: `demo/verify.sh`
-- Modify: `internal/packaging/assets_test.go`
+**Файлы:**
+- Создать: `compose.yaml`
+- Создать: `demo/Dockerfile.tools`
+- Создать: `demo/bootstrap.sh`
+- Создать: `demo/producer.sh`
+- Создать: `demo/collector.yaml.tmpl`
+- Создать: `demo/verify.sh`
+- Изменить: `internal/packaging/assets_test.go`
 
-**Interfaces:**
-- Uses Zabbix 7.4.12 PostgreSQL server/web images, PostgreSQL 17 Alpine, and VictoriaMetrics v1.148.0.
-- Produces metric `zabbix_demo_counter` with `host="otel-demo-host"`, `item_key="demo.counter"`, `env="compose"`, and changing numeric values.
+**Интерфейсы:**
+- Использует образы сервера/веб-интерфейса Zabbix 7.4.12 для PostgreSQL, PostgreSQL 17 Alpine и VictoriaMetrics v1.148.0.
+- Создаёт метрику `zabbix_demo_counter` с `host="otel-demo-host"`, `item_key="demo.counter"`, `env="compose"` и изменяющимися числовыми значениями.
 
-- [ ] **Step 1: Extend failing packaging tests for Compose topology**
+- [ ] **Шаг 1: расширить падающие тесты упаковки проверками топологии Compose**
 
-Parse `compose.yaml` as YAML and assert services `postgres`, `zabbix-server`, `zabbix-web`, `bootstrap`, `producer`, `otelcol-zabbix`, and `victoriametrics`; exact pinned Zabbix and VictoriaMetrics tags; health/dependency conditions; a private network; and a shared `demo-config` volume used only by bootstrap and Collector.
+Разобрать `compose.yaml` как YAML и проверить сервисы `postgres`, `zabbix-server`, `zabbix-web`, `bootstrap`, `producer`, `otelcol-zabbix` и `victoriametrics`; точные закреплённые теги Zabbix и VictoriaMetrics; условия состояния/зависимостей; частную сеть; общий том `demo-config`, используемый только начальной настройкой и Collector.
 
-- [ ] **Step 2: Write the bootstrap script with idempotent API helpers**
+- [ ] **Шаг 2: написать скрипт начальной настройки с идемпотентными функциями API**
 
-Implement POSIX shell functions `rpc_unauthenticated`, `rpc_session`, and `rpc_bearer` using `curl --fail-with-body` and `jq -e`. The script must:
+Реализовать функции POSIX shell `rpc_unauthenticated`, `rpc_session` и `rpc_bearer` с использованием `curl --fail-with-body` и `jq -e`. Скрипт должен:
 
-1. Poll `apiinfo.version` until ready.
-2. Log in as `Admin` with the Compose-only password.
-3. Query or create host group `OpenTelemetry Demo`.
-4. Query or create host `otel-demo-host`.
-5. Query or create trapper item `demo.counter` with float value type.
-6. Delete any prior token named `otel-demo-receiver`, then create and generate a token for the current user.
-7. Render `demo/collector.yaml.tmpl` to `/generated/otelcol.yaml` with the generated token embedded only in that runtime volume file. Run bootstrap as root solely to set ownership to `10001:10001` and mode `0400`, allowing the non-root Collector to read it without exposing it through Compose interpolation or tracked files.
-8. Write `/generated/ready` last.
+1. Опрашивать `apiinfo.version` до готовности.
+2. Войти как `Admin` с паролем, используемым только в Compose.
+3. Найти или создать группу узлов `OpenTelemetry Demo`.
+4. Найти или создать узел `otel-demo-host`.
+5. Найти или создать элемент данных trapper `demo.counter` с типом значения float.
+6. Удалить предыдущий токен с именем `otel-demo-receiver`, затем создать и сгенерировать токен для текущего пользователя.
+7. Сформировать `/generated/otelcol.yaml` из `demo/collector.yaml.tmpl`, включив сгенерированный токен только в этот файл рабочего тома. Запускать начальную настройку от root исключительно для установки владельца `10001:10001` и режима `0400`, чтобы непривилегированный Collector мог читать файл без раскрытия токена через подстановки Compose или отслеживаемые файлы.
+8. Последним записать `/generated/ready`.
 
-Every API response must be checked for `.error`; token output must never be printed.
+Каждый ответ API необходимо проверять на `.error`; вывод токена никогда не должен печататься.
 
-- [ ] **Step 3: Write producer and verification scripts**
+- [ ] **Шаг 3: написать скрипты генерации и проверки**
 
-`producer.sh` waits for Zabbix server port 10051 and sends one increasing value every five seconds:
+`producer.sh` ожидает порт 10051 сервера Zabbix и отправляет одно возрастающее значение каждые пять секунд:
 
 ```sh
 value=1
@@ -844,21 +846,21 @@ while :; do
 done
 ```
 
-`verify.sh` polls for up to 180 seconds:
+`verify.sh` опрашивает до 180 секунд:
 
 ```text
 GET http://victoriametrics:8428/api/v1/query?query=zabbix_demo_counter{host="otel-demo-host",env="compose"}
 ```
 
-It succeeds only when `.status == "success"`, exactly one result exists, `item_key == "demo.counter"`, `hostid` and `itemid` are non-empty, the sample value parses as a positive number, and the sample timestamp is at or after the verifier start. It ignores matching stale samples and prints only the accepted fresh metric JSON, never credentials.
+Он завершается успешно только если `.status == "success"`, существует ровно один результат, `item_key == "demo.counter"`, `hostid` и `itemid` непустые, значение образца разбирается как положительное число, а временная метка образца не предшествует запуску проверки. Он игнорирует подходящие устаревшие образцы и печатает только JSON принятой свежей метрики, никогда — учётные данные.
 
-- [ ] **Step 4: Implement the Compose topology and demo receiver config**
+- [ ] **Шаг 4: реализовать топологию Compose и демонстрационную конфигурацию приёмника**
 
-Use a short demo schedule: zero jitter, discovery on start every 15 seconds, values on start every 5 seconds, and request limits 100. Configure the Collector health extension and `prometheusremotewrite` endpoint `http://victoriametrics:8428/api/v1/write`.
+Использовать короткое расписание демонстрации: нулевая случайная задержка, обнаружение при старте и каждые 15 секунд, сбор значений при старте и каждые 5 секунд, лимиты запросов 100. Настроить расширение проверки состояния Collector и адрес `prometheusremotewrite` `http://victoriametrics:8428/api/v1/write`.
 
-Build `demo/Dockerfile.tools` from `alpine:3.24.1` with only `curl`, `jq`, and CA certificates. Use this local tools image for bootstrap and verification; use the official Zabbix agent image for `zabbix_sender` in the producer.
+Собрать `demo/Dockerfile.tools` на основе `alpine:3.24.1`, включив только `curl`, `jq` и сертификаты центров сертификации. Использовать этот локальный образ утилит для начальной настройки и проверки; для `zabbix_sender` в генераторе использовать официальный образ агента Zabbix.
 
-Pin images to:
+Закрепить следующие образы:
 
 ```yaml
 postgres:17-alpine
@@ -868,11 +870,11 @@ zabbix/zabbix-agent2:alpine-7.4.12
 victoriametrics/victoria-metrics:v1.148.0
 ```
 
-Build the Collector service from the local Dockerfile. The Collector depends on successful bootstrap, producer depends on successful bootstrap plus healthy Zabbix server, and verifier runs under the `verify` Compose profile.
+Собирать сервис Collector из локального Dockerfile. Collector зависит от успешной начальной настройки, генератор — от успешной начальной настройки и исправного сервера Zabbix, а проверяющий сервис запускается в профиле Compose `verify`.
 
-- [ ] **Step 5: Validate syntax and static contract**
+- [ ] **Шаг 5: проверить синтаксис и статический контракт**
 
-Run:
+Выполнить:
 
 ```bash
 go test ./internal/packaging -count=1
@@ -880,11 +882,11 @@ docker compose config --quiet
 shellcheck demo/*.sh
 ```
 
-Expected: all checks pass and expanded Compose output contains no receiver token.
+Ожидается: все проверки проходят успешно, а раскрытая конфигурация Compose не содержит токена приёмника.
 
-- [ ] **Step 6: Run the real end-to-end demo**
+- [ ] **Шаг 6: запустить реальную сквозную демонстрацию**
 
-Run:
+Выполнить:
 
 ```bash
 docker compose up -d --build postgres zabbix-server zabbix-web bootstrap producer victoriametrics otelcol-zabbix
@@ -892,13 +894,13 @@ docker compose --profile verify run --rm verify
 docker compose logs --no-color otelcol-zabbix
 ```
 
-Expected: verification prints one `zabbix_demo_counter` series with all required labels; Collector logs show successful discovery and values cycles without authentication errors.
+Ожидается: проверка печатает один ряд `zabbix_demo_counter` со всеми обязательными метками; журналы Collector показывают успешные циклы обнаружения и сбора значений без ошибок аутентификации.
 
-- [ ] **Step 7: Tear down the demo and commit it**
+- [ ] **Шаг 7: остановить демонстрацию и закоммитить её**
 
-Run: `docker compose down --volumes --remove-orphans`
+Выполнить: `docker compose down --volumes --remove-orphans`
 
-Then commit:
+Затем закоммитить:
 
 ```bash
 git add compose.yaml demo internal/packaging/assets_test.go
@@ -907,32 +909,32 @@ git commit -m "feat: demonstrate Zabbix to VictoriaMetrics flow"
 
 ---
 
-### Task 10: Documentation, CI, and Final Verification
+### Задача 10: документация, CI и итоговая проверка
 
-**Files:**
-- Create: `README.md`
-- Create: `docs/configuration.md`
-- Create: `docs/deployment.md`
-- Create: `.github/workflows/ci.yml`
-- Modify: `Makefile`
+**Файлы:**
+- Создать: `README.md`
+- Создать: `docs/configuration.md`
+- Создать: `docs/deployment.md`
+- Создать: `.github/workflows/ci.yml`
+- Изменить: `Makefile`
 
-**Interfaces:**
-- Documents the exact public YAML and environment contract, build/run commands, supported Zabbix authentication behavior, metric mapping, operational failure behavior, and all four deployment paths.
-- CI executes formatting, tests, race tests, vet, build, config validation, packaging tests, and Compose config validation.
+**Интерфейсы:**
+- Документирует точный публичный контракт YAML и окружения, команды сборки/запуска, поддерживаемое поведение аутентификации Zabbix, сопоставление метрик, поведение при эксплуатационных сбоях и все четыре способа развёртывания.
+- CI выполняет форматирование, тесты, проверку гонок, vet, сборку, валидацию конфигурации, тесты упаковки и валидацию конфигурации Compose.
 
-- [ ] **Step 1: Write a failing documentation-contract test**
+- [ ] **Шаг 1: написать падающий тест контракта документации**
 
-Extend `internal/packaging/assets_test.go` to require README sections `Architecture`, `Quick start`, `Configuration`, `Metric mapping`, `Docker Compose demo`, `VM/systemd`, `Kubernetes`, `Testing`, and `Security`; require the approved-design link and verify every supported environment variable appears in `docs/configuration.md`.
+Расширить `internal/packaging/assets_test.go`, потребовав разделы README `Architecture`, `Quick start`, `Configuration`, `Metric mapping`, `Docker Compose demo`, `VM/systemd`, `Kubernetes`, `Testing` и `Security`; потребовать ссылку на утверждённый проект и проверить наличие каждой поддерживаемой переменной окружения в `docs/configuration.md`.
 
-- [ ] **Step 2: Run the documentation test and confirm failure**
+- [ ] **Шаг 2: запустить тест документации и подтвердить сбой**
 
-Run: `go test ./internal/packaging -run TestDocumentationContract -count=1`
+Выполнить: `go test ./internal/packaging -run TestDocumentationContract -count=1`
 
-Expected: FAIL because documentation files do not exist.
+Ожидается: FAIL, поскольку файлы документации ещё не существуют.
 
-- [ ] **Step 3: Write user and operator documentation**
+- [ ] **Шаг 3: написать документацию для пользователей и операторов**
 
-README quick start must contain exact commands:
+Быстрый старт README должен содержать точные команды:
 
 ```bash
 make build
@@ -942,17 +944,17 @@ VICTORIAMETRICS_REMOTE_WRITE_URL=http://victoriametrics:8428/api/v1/write \
 ./bin/otelcol-zabbix --config configs/otelcol.yaml
 ```
 
-Document that modern Zabbix uses Bearer authorization and legacy Zabbix 5.x can use a `user.login` session token through automatic legacy fallback. Document that the fallback is cached, credentials are never logged, and long-lived API tokens require the Zabbix version that supports them.
+Документировать, что современный Zabbix использует авторизацию Bearer, а старый Zabbix 5.x может использовать токен сеанса `user.login` через автоматический переход к устаревшему режиму. Указать, что этот режим кешируется, учётные данные никогда не записываются в журнал, а долгоживущие токены API требуют поддерживающей их версии Zabbix.
 
-Document metric name construction, gauge conversion, point timestamp, reserved-label precedence, filter order, discovery snapshot retention, partial-batch policy, and environment precedence. Include systemd installation commands and `kubectl apply -k deployments/kubernetes` with explicit Secret editing instructions.
+Документировать построение имён метрик, преобразование в gauge, временную метку точки, приоритет зарезервированных меток, порядок фильтров, сохранение снимка обнаружения, политику частичных пакетов и приоритет окружения. Включить команды установки systemd и `kubectl apply -k deployments/kubernetes` с явными указаниями по редактированию Secret.
 
-- [ ] **Step 4: Add CI workflow**
+- [ ] **Шаг 4: добавить процесс CI**
 
-Configure GitHub Actions on pushes and pull requests with Go 1.25, dependency cache, `make fmt` plus clean-diff assertion, `make test`, `make test-race`, `make vet`, `make build`, `make validate-config`, packaging tests, `docker compose config --quiet`, and Docker image build. Do not run the multi-container demo on every push; expose it as a manual `workflow_dispatch` job with a 15-minute timeout and guaranteed `docker compose down --volumes` cleanup.
+Настроить GitHub Actions для отправок в репозиторий и pull request с Go 1.25, кешем зависимостей, `make fmt` и проверкой отсутствия изменений, `make test`, `make test-race`, `make vet`, `make build`, `make validate-config`, тестами упаковки, `docker compose config --quiet` и сборкой образа Docker. Не запускать демонстрацию из нескольких контейнеров при каждой отправке; предоставить её как ручное задание `workflow_dispatch` с тайм-аутом 15 минут и гарантированной очисткой через `docker compose down --volumes`.
 
-- [ ] **Step 5: Run the full verification matrix from a clean process state**
+- [ ] **Шаг 5: выполнить полную матрицу проверок из чистого состояния процессов**
 
-Run:
+Выполнить:
 
 ```bash
 make fmt
@@ -967,11 +969,11 @@ docker build -t zabbix-otel-collector:verify .
 docker run --rm zabbix-otel-collector:verify components
 ```
 
-Expected: every command exits zero; container component output lists the receiver and expected pipeline components.
+Ожидается: каждая команда завершается с кодом ноль; вывод компонентов контейнера перечисляет приёмник и ожидаемые компоненты конвейера.
 
-- [ ] **Step 6: Run final Compose verification**
+- [ ] **Шаг 6: выполнить итоговую проверку Compose**
 
-Run:
+Выполнить:
 
 ```bash
 make demo-up
@@ -979,11 +981,11 @@ make demo-verify
 make demo-down
 ```
 
-Expected: VictoriaMetrics returns the real Zabbix trapper value with `host`, `hostid`, `item_key`, `itemid`, and `env=compose`.
+Ожидается: VictoriaMetrics возвращает реальное значение trapper Zabbix с `host`, `hostid`, `item_key`, `itemid` и `env=compose`.
 
-- [ ] **Step 7: Review secrets and repository state**
+- [ ] **Шаг 7: проверить секреты и состояние репозитория**
 
-Run:
+Выполнить:
 
 ```bash
 rg -n --hidden --glob '!.git/**' '(ZABBIX_TOKEN=.{8,}|Bearer [A-Za-z0-9]{16,}|Admin.*zabbix)' .
@@ -991,15 +993,15 @@ git status --short
 git log --oneline --decorate -12
 ```
 
-Expected: matches contain only documented placeholders or Compose-only bootstrap credentials; no generated token is tracked; working tree contains only intentional plan checkbox updates if those are being recorded.
+Ожидается: совпадения содержат только документированные заглушки или учётные данные начальной настройки, используемые только в Compose; сгенерированные токены не отслеживаются; рабочее дерево содержит только намеренные обновления флажков плана, если они ведутся.
 
-- [ ] **Step 8: Commit documentation and CI**
+- [ ] **Шаг 8: закоммитить документацию и CI**
 
 ```bash
 git add README.md docs/configuration.md docs/deployment.md .github/workflows/ci.yml Makefile internal/packaging/assets_test.go
 git commit -m "docs: document and verify Zabbix receiver"
 ```
 
-- [ ] **Step 9: Perform completion review**
+- [ ] **Шаг 9: выполнить проверку завершения**
 
-Compare every completion criterion in `docs/superpowers/specs/2026-08-05-zabbix-opentelemetry-receiver-design.md` to fresh command output. Record any unavailable host-specific validator and its containerized equivalent in the final handoff; do not claim end-to-end completion unless `make demo-verify` has observed the metric in VictoriaMetrics.
+Сопоставить каждый критерий завершения из `docs/superpowers/specs/2026-08-05-zabbix-opentelemetry-receiver-design.md` со свежим выводом команд. В итоговой передаче результата указать все недоступные валидаторы для хостовой ОС и их контейнерные эквиваленты; не заявлять о завершении сквозной проверки, пока `make demo-verify` не обнаружит метрику в VictoriaMetrics.

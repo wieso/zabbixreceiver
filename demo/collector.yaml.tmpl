@@ -2,14 +2,14 @@ extensions:
   health_check:
     endpoint: 0.0.0.0:13133
 receivers:
-  zabbix:
+  zabbix/api:
     schedule:
       jitter: 0s
       jobs:
         discover: {enabled: true, run_on_start: true, interval: 15s, timeout: 10s}
         values: {enabled: true, run_on_start: true, interval: 5s, timeout: 4s}
     prom:
-      prefix: zabbix_
+      prefix: zabbix_api_
       const_labels: {env: compose}
     zabbix:
       url: http://zabbix-web:8080/api_jsonrpc.php
@@ -18,18 +18,35 @@ receivers:
       limits: {max_metrics_per_host: 100, items_per_request: 100}
       filters:
         host_include_regex: ^otel-demo-host$
-        host_exclude_regex: ""
         item_key_include_regex: ^demo\.counter$
-        item_key_exclude_regex: ""
+  zabbix/stream:
+    mode: streaming
+    streaming:
+      endpoint: 0.0.0.0:8081
+      token: '@@STREAM_TOKEN@@'
+    prom:
+      prefix: zabbix_stream_
+      const_labels: {env: compose}
 processors:
   batch: {}
 exporters:
   prometheusremotewrite:
     endpoint: http://victoriametrics:8428/api/v1/write
 service:
+  telemetry:
+    logs:
+      level: info
+      encoding: json
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
   extensions: [health_check]
   pipelines:
     metrics:
-      receivers: [zabbix]
+      receivers: [zabbix/api, zabbix/stream]
       processors: [batch]
       exporters: [prometheusremotewrite]

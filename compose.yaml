@@ -18,6 +18,7 @@ services:
   zabbix-server:
     image: zabbix/zabbix-server-pgsql:alpine-7.4.12
     environment:
+      ZBX_STARTCONNECTORS: 2
       DB_SERVER_HOST: postgres
       POSTGRES_DB: zabbix
       POSTGRES_USER: zabbix
@@ -94,12 +95,34 @@ services:
 
   victoriametrics:
     image: victoriametrics/victoria-metrics:v1.148.0
-    command: ["-storageDataPath=/victoria-metrics-data", "-retentionPeriod=1d"]
+    command: ["-storageDataPath=/victoria-metrics-data", "-retentionPeriod=1d", "-promscrape.config=/etc/victoriametrics/scrape.yaml"]
     volumes:
       - victoriametrics-data:/victoria-metrics-data
+      - ./demo/victoriametrics-scrape.yaml:/etc/victoriametrics/scrape.yaml:ro
     ports:
       - target: 8428
         published: "${VICTORIAMETRICS_PORT:-8428}"
+        host_ip: 127.0.0.1
+        protocol: tcp
+    networks: [demo]
+
+  grafana:
+    image: grafana/grafana:12.4.0
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/zabbix-receiver.json
+    depends_on:
+      victoriametrics:
+        condition: service_started
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./demo/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./demo/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - target: 3000
+        published: "${GRAFANA_PORT:-3000}"
         host_ip: 127.0.0.1
         protocol: tcp
     networks: [demo]
@@ -117,6 +140,11 @@ services:
         condition: service_started
     volumes:
       - demo-config:/generated:ro
+    ports:
+      - target: 8888
+        published: "${OTELCOL_METRICS_PORT:-8888}"
+        host_ip: 127.0.0.1
+        protocol: tcp
     networks: [demo]
 
   verify:
@@ -132,6 +160,7 @@ services:
     volumes:
       - ./demo/verify-entrypoint.sh:/demo/verify-entrypoint.sh:ro
       - ./demo/verify.sh:/demo/verify.sh:ro
+      - ./demo/verify-grafana.sh:/demo/verify-grafana.sh:ro
     networks: [demo]
 
 networks:
@@ -142,3 +171,4 @@ volumes:
   demo-config: {}
   postgres-data: {}
   victoriametrics-data: {}
+  grafana-data: {}

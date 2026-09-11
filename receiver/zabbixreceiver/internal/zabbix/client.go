@@ -9,12 +9,16 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 )
 
 const maxResponseBytes = 8 << 20
+
+var quotedErrorText = regexp.MustCompile(`"(?:[^"\\]|\\.)*"`)
 
 type authMode uint8
 
@@ -25,11 +29,15 @@ const (
 
 // Client is a concurrency-safe JSON-RPC client for the Zabbix API.
 type Client struct {
-	endpoint     *url.URL
-	safeEndpoint string
-	token        string
-	httpClient   *http.Client
-	nextID       atomic.Uint64
+	endpoint          *url.URL
+	safeEndpoint      string
+	token             string
+	httpClient        *http.Client
+	nextID            atomic.Uint64
+	metadataEnabled   bool
+	inheritedHostTags bool
+	inventoryFields   []string
+	legacyGroups      atomic.Bool
 
 	authMu   sync.RWMutex
 	authMode authMode
@@ -68,29 +76,106 @@ func NewClient(config ClientConfig, httpClient *http.Client) (*Client, error) {
 	}
 
 	return &Client{
-		endpoint:     endpoint,
-		safeEndpoint: endpoint.Scheme + "://" + endpoint.Host + endpoint.EscapedPath(),
-		token:        config.Token,
-		httpClient:   &clientCopy,
-		authMode:     bearerAuth,
+		endpoint:          endpoint,
+		safeEndpoint:      endpoint.Scheme + "://" + endpoint.Host + endpoint.EscapedPath(),
+		token:             config.Token,
+		httpClient:        &clientCopy,
+		authMode:          bearerAuth,
+		metadataEnabled:   config.MetadataEnabled,
+		inheritedHostTags: config.InheritedHostTags,
+		inventoryFields:   append([]string(nil), config.InventoryFields...),
 	}, nil
 }
 
 func (c *Client) Hosts(ctx context.Context) ([]Host, error) {
 	var result []struct {
-		ID   string `json:"hostid"`
-		Name string `json:"host"`
+		ID            string `json:"hostid"`
+		Name          string `json:"host"`
+		VisibleName   string `json:"name"`
+		Tags          []Tag  `json:"tags"`
+		InheritedTags []Tag  `json:"inheritedTags"`
+		Groups        []struct {
+			Name string `json:"name"`
+		} `json:"hostgroups"`
+		LegacyGroups []struct {
+			Name string `json:"name"`
+		} `json:"groups"`
+		Inventory json.RawMessage `json:"inventory"`
 	}
-	err := c.call(ctx, "host.get", map[string]any{
+	params := map[string]any{
 		"output":    []string{"hostid", "host"},
 		"sortfield": "hostid",
-	}, &result)
+	}
+	if c.metadataEnabled {
+		params["output"] = []string{"hostid", "host", "name"}
+		params["selectTags"] = []string{"tag", "value"}
+		params["selectHostGroups"] = []string{"name"}
+		if c.legacyGroups.Load() {
+			delete(params, "selectHostGroups")
+			params["selectGroups"] = []string{"name"}
+		}
+		if c.inheritedHostTags {
+			params["selectInheritedTags"] = []string{"tag", "value"}
+		}
+		if len(c.inventoryFields) > 0 {
+			params["selectInventory"] = c.inventoryFields
+		}
+	}
+	err := c.call(ctx, "host.get", params, &result)
+	var rpcError *RPCError
+	unsupportedGroups := errors.As(err, &rpcError) && rpcError.Code == -32602 && strings.Contains(rpcError.Data, `unexpected parameter "selectHostGroups"`)
+	// Zabbix 6.0 also silently ignores unknown selectors. A present empty array
+	// is valid; an absent property on a returned host requires the legacy query.
+	if err == nil {
+		for _, host := range result {
+			if host.Groups == nil {
+				unsupportedGroups = true
+				break
+			}
+		}
+	}
+	if _, modern := params["selectHostGroups"]; modern && unsupportedGroups {
+		delete(params, "selectHostGroups")
+		params["selectGroups"] = []string{"name"}
+		result = nil
+		err = c.call(ctx, "host.get", params, &result)
+		if err == nil {
+			c.legacyGroups.Store(true)
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
 	hosts := make([]Host, len(result))
 	for i, host := range result {
 		hosts[i] = Host{ID: host.ID, Name: host.Name}
+		if c.metadataEnabled {
+			hosts[i].VisibleName = host.VisibleName
+			hosts[i].Tags = host.Tags
+			if c.inheritedHostTags {
+				hosts[i].InheritedTags = host.InheritedTags
+			}
+			for _, group := range host.Groups {
+				hosts[i].Groups = append(hosts[i].Groups, group.Name)
+			}
+			for _, group := range host.LegacyGroups {
+				hosts[i].Groups = append(hosts[i].Groups, group.Name)
+			}
+			if len(c.inventoryFields) > 0 && len(host.Inventory) > 0 && string(host.Inventory) != "[]" {
+				var inventory map[string]string
+				if err := json.Unmarshal(host.Inventory, &inventory); err != nil {
+					return nil, c.operationError("host.get", fmt.Errorf("decode inventory: %w", err))
+				}
+				for _, key := range c.inventoryFields {
+					if value, ok := inventory[key]; ok {
+						if hosts[i].Inventory == nil {
+							hosts[i].Inventory = make(map[string]string)
+						}
+						hosts[i].Inventory[key] = value
+					}
+				}
+			}
+		}
 	}
 	return hosts, nil
 }
@@ -105,19 +190,30 @@ func (c *Client) Items(ctx context.Context, hostIDs []string) ([]Item, error) {
 		Name      string `json:"name"`
 		Key       string `json:"key_"`
 		ValueType string `json:"value_type"`
+		Units     string `json:"units"`
+		Tags      []Tag  `json:"tags"`
 	}
-	err := c.call(ctx, "item.get", map[string]any{
+	params := map[string]any{
 		"output":    []string{"itemid", "hostid", "name", "key_", "value_type"},
 		"hostids":   hostIDs,
 		"filter":    map[string][]string{"value_type": {"0", "3"}},
 		"sortfield": "itemid",
-	}, &result)
+	}
+	if c.metadataEnabled {
+		params["output"] = []string{"itemid", "hostid", "name", "key_", "value_type", "units"}
+		params["selectTags"] = []string{"tag", "value"}
+	}
+	err := c.call(ctx, "item.get", params, &result)
 	if err != nil {
 		return nil, err
 	}
 	items := make([]Item, len(result))
 	for i, item := range result {
 		items[i] = Item{ID: item.ID, HostID: item.HostID, Name: item.Name, Key: item.Key, ValueType: item.ValueType}
+		if c.metadataEnabled {
+			items[i].Units = item.Units
+			items[i].Tags = item.Tags
+		}
 	}
 	return items, nil
 }
@@ -258,8 +354,14 @@ func redactError(err error, token string) error {
 }
 
 func redactErrorChain(err error, token string) (error, bool) {
-	if err == nil || token == "" {
+	if err == nil {
 		return err, false
+	}
+	if urlError, ok := err.(*url.Error); ok {
+		copy := *urlError
+		copy.URL = redactToken(safeErrorURL(copy.URL), token)
+		copy.Err, _ = redactErrorChain(urlError.Err, token)
+		return &copy, copy.Error() != urlError.Error()
 	}
 	if rpcError, ok := err.(*RPCError); ok {
 		copy := *rpcError
@@ -268,15 +370,45 @@ func redactErrorChain(err error, token string) (error, bool) {
 		return &copy, copy.Message != rpcError.Message || copy.Data != rpcError.Data
 	}
 
-	cause, causeRedacted := redactErrorChain(errors.Unwrap(err), token)
-	message := redactToken(err.Error(), token)
+	originalCause := errors.Unwrap(err)
+	cause, causeRedacted := redactErrorChain(originalCause, token)
+	message := err.Error()
+	if causeRedacted {
+		// A wrapping error also formats its cause; sanitizing only Unwrap would
+		// still leak the original URL when the outer error is logged.
+		message = strings.ReplaceAll(message, originalCause.Error(), cause.Error())
+	}
+	message = redactToken(message, token)
+	// net/http embeds a malformed Location (including relative URLs) in a
+	// quoted plain error with no unwrap chain. Sanitize those URL literals too.
+	message = quotedErrorText.ReplaceAllStringFunc(message, func(quoted string) string {
+		value, err := strconv.Unquote(quoted)
+		if err != nil || !strings.ContainsAny(value, "?#@") {
+			return quoted
+		}
+		return strconv.Quote(safeErrorURL(value))
+	})
 	if causeRedacted || message != err.Error() {
 		return &redactedError{message: message, original: err, cause: cause}, true
 	}
 	return err, false
 }
 
+func safeErrorURL(rawURL string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return "[REDACTED URL]"
+	}
+	parsed.User = nil
+	parsed.RawQuery, parsed.Fragment, parsed.RawFragment = "", "", ""
+	parsed.ForceQuery = false
+	return parsed.String()
+}
+
 func redactToken(value, token string) string {
+	if token == "" {
+		return value
+	}
 	return strings.ReplaceAll(value, token, "[REDACTED]")
 }
 
