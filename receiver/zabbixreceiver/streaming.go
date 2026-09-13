@@ -8,17 +8,15 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"math"
 	"mime"
 	"net"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/wieso/zabbixreceiver/receiver/zabbixreceiver/internal/discovery"
 	otelmetrics "github.com/wieso/zabbixreceiver/receiver/zabbixreceiver/internal/metrics"
 	"github.com/wieso/zabbixreceiver/receiver/zabbixreceiver/internal/zabbix"
-	"go.opentelemetry.io/collector/consumer/consumererror"
-	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -169,8 +167,8 @@ func (r *zabbixReceiver) handleHistory(w http.ResponseWriter, req *http.Request)
 						continue
 					}
 				}
-				number, err := strconv.ParseFloat(value, 64)
-				if err != nil || math.IsNaN(number) || math.IsInf(number, 0) || record.NS < 0 || *record.Clock < 0 || *record.Clock > (math.MaxInt64-record.NS)/1_000_000_000 {
+				number, timestamp, err := otelmetrics.ParseSample(value, *record.Clock, record.NS)
+				if err != nil {
 					skip()
 					continue
 				}
@@ -198,28 +196,10 @@ func (r *zabbixReceiver) handleHistory(w http.ResponseWriter, req *http.Request)
 				if record.ItemTags != nil {
 					meta.ItemTags = record.ItemTags
 				}
-				name, err := otelmetrics.Name(r.config.Prom.Prefix, record.Name)
-				if err != nil {
+				item := discovery.ItemMeta{ID: string(record.ItemID), Host: record.Host.Host, HostID: hostID, Key: itemKey, Name: record.Name, Metadata: meta}
+				if !otelmetrics.AppendGauge(scope.Metrics(), item, number, timestamp, otelmetrics.Config{Prefix: r.config.Prom.Prefix, ConstLabels: r.config.Prom.ConstLabels, MetadataEnabled: r.config.Metadata.Enabled}) {
 					skip()
 					continue
-				}
-				metric := scope.Metrics().AppendEmpty()
-				metric.SetName(name)
-				metric.SetDescription(record.Name)
-				point := metric.SetEmptyGauge().DataPoints().AppendEmpty()
-				point.SetDoubleValue(number)
-				point.SetTimestamp(pcommon.Timestamp(*record.Clock*1_000_000_000 + record.NS))
-				for key, label := range r.config.Prom.ConstLabels {
-					point.Attributes().PutStr(key, label)
-				}
-				point.Attributes().PutStr("host", record.Host.Host)
-				point.Attributes().PutStr("itemid", string(record.ItemID))
-				if r.config.Streaming.EnrichWithAPI {
-					point.Attributes().PutStr("hostid", hostID)
-					point.Attributes().PutStr("item_key", itemKey)
-				}
-				if r.config.Metadata.Enabled {
-					otelmetrics.PutMetadata(point.Attributes(), meta)
 				}
 				emitted++
 			}
@@ -244,15 +224,11 @@ func (r *zabbixReceiver) handleHistory(w http.ResponseWriter, req *http.Request)
 		return
 	}
 	received = int(emitted)
-	if emitted > 0 {
-		if err := r.next.ConsumeMetrics(ctx, batch); err != nil {
-			fail(503, "downstream unavailable")
-			receiveErr = consumererror.NewDownstream(receiveErr)
-			return
-		}
+	if err := r.deliver(ctx, batch); err != nil {
+		fail(503, "downstream unavailable")
+		receiveErr = err
+		return
 	}
-	r.telemetry.emittedPoints.Add(ctx, emitted, r.telemetry.attrs)
-	r.telemetry.valuesLastSuccess.Record(ctx, float64(time.Now().Unix()), r.telemetry.attrs)
 	r.logger.Debug("Zabbix streaming request completed", zap.Int64("points", emitted), zap.Int64("invalid_records", skipped), zap.Duration("duration", time.Since(started)))
 	streamReply(w, http.StatusOK, "success")
 }

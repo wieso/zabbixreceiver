@@ -9,10 +9,14 @@ func TestNameSanitizesZabbixItemKeys(t *testing.T) {
 		want    string
 	}{
 		{"zabbix_", "system.cpu.util", "zabbix_system_cpu_util"},
-		{"zabbix_", `vfs.fs.size[/,free]`, "zabbix_vfs_fs_size___free"},
+		{"Zabbix_", "CPUUsage (%)", "zabbix_cpu_usage_percent"},
+		{"", "Temperature °C", "temperature_degree_c"},
+		{"", "Read+Write & IO/s", "read_plus_write_and_io_s"},
+		{"", "HTTPResponse:Time", "http_response_time"},
+		{"zabbix_", `vfs.fs.size[/,free]`, "zabbix_vfs_fs_size_free"},
 		{"", "9bad", "_9bad"},
 		{"zabbix_", "ends...", "zabbix_ends"},
-		{"zabbix_", "cpu.温度.util", "zabbix_cpu____util"},
+		{"zabbix_", "cpu.温度.util", "zabbix_cpu_util"},
 		{"9", "key", "_9key"},
 		{"zabbix_", "", "zabbix"},
 	}

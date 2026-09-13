@@ -8,7 +8,7 @@
 | --- | --- |
 | [README проекта](../README.md) | Назначение, короткий старт и ссылки на руководства |
 | [configuration.md](configuration.md) | Параметры, значения по умолчанию, валидация, аутентификация, поведение API/Streaming, метрики и ошибки |
-| [metadata.md](metadata.md) | Теги, группы, выбранный inventory, кодирование лейблов и API-обогащение Streaming |
+| [metadata.md](metadata.md) | Теги, группы, выбранный inventory, формат лейблов и API-обогащение Streaming |
 | [deployment.md](deployment.md) | Установка, демонстрация, коннектор Zabbix, служба, контейнеры, сеть, секреты и диагностика |
 | [architecture.md](architecture.md) | Карта кода, потоки данных, состояние и границы компонентов |
 | [scaling.md](scaling.md) | Ресурсы, измерения, шардирование API, балансировка Streaming и демо с несколькими коллекторами |

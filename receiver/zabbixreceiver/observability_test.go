@@ -3,6 +3,7 @@ package zabbixreceiver
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -11,10 +12,13 @@ import (
 	"github.com/wieso/zabbixreceiver/receiver/zabbixreceiver/internal/discovery"
 	"github.com/wieso/zabbixreceiver/receiver/zabbixreceiver/internal/zabbix"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/consumer/consumererror"
 	"go.opentelemetry.io/collector/receiver/receivertest"
 	"go.opentelemetry.io/otel/attribute"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
 )
@@ -30,6 +34,10 @@ func TestObservabilityDelivery(t *testing.T) {
 			settings.MeterProvider = provider
 			core, logs := observer.New(zap.DebugLevel)
 			settings.Logger = zap.New(core)
+			spans := tracetest.NewSpanRecorder()
+			tracerProvider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spans))
+			t.Cleanup(func() { require.NoError(t, tracerProvider.Shutdown(context.Background())) })
+			settings.TracerProvider = tracerProvider
 			cfg := validConfig()
 			cfg.Mode = mode
 			created, err := createMetricsReceiver(context.Background(), settings, cfg, newRecordingConsumer(t).metrics)
@@ -51,7 +59,7 @@ func TestObservabilityDelivery(t *testing.T) {
 				r.handleHistory(httptest.NewRecorder(), req)
 			}
 			run()
-			next.err = errors.New("downstream unavailable")
+			next.err = consumererror.NewPermanent(errors.New("Bearer downstream-sentinel-secret"))
 			run()
 			got := collectTelemetry(t, reader)
 			require.EqualValues(t, 1, sumValue(t, got, "otelcol_receiver_zabbix_emitted_points"))
@@ -68,7 +76,15 @@ func TestObservabilityDelivery(t *testing.T) {
 					}
 				}
 			}
-			require.NotEmpty(t, logs.All())
+			require.Equal(t, 1, logs.FilterMessage("Zabbix metrics delivery failed; check downstream component logs").Len())
+			require.NotEmpty(t, spans.Ended())
+			for _, span := range spans.Ended() {
+				require.NotContains(t, span.Status().Description, "downstream-sentinel-secret")
+			}
+			for _, entry := range logs.All() {
+				require.NotContains(t, entry.Message, "downstream-sentinel-secret")
+				require.NotContains(t, fmt.Sprint(entry.ContextMap()), "downstream-sentinel-secret")
+			}
 		})
 	}
 }
