@@ -13,7 +13,7 @@ if [ "$verify_timeout_seconds" -le 0 ]; then
 	exit 2
 fi
 
-selector='{__name__=~"zabbix_(api_demo_counter|stream_OpenTelemetry_demo_counter)",host="otel-demo-host",env="compose"}'
+selector='{__name__=~"zabbix_(api_demo_counter|stream_open_telemetry_demo_counter)",host="otel-demo-host",env="compose"}'
 verify_start_epoch=$(date +%s)
 # Instant-query result timestamps are evaluation times; filter source timestamps.
 query="$selector and (timestamp($selector) >= $verify_start_epoch)"
@@ -39,7 +39,7 @@ while :; do
 		if printf '%s\n' "$response" | jq -e --argjson verify_start_epoch "$verify_start_epoch" '
 			.status == "success" and
 			(.data.result | length) == 2 and
-            ([.data.result[].metric.__name__] | sort) == ["zabbix_api_demo_counter", "zabbix_stream_OpenTelemetry_demo_counter"] and
+            ([.data.result[].metric.__name__] | sort) == ["zabbix_api_demo_counter", "zabbix_stream_open_telemetry_demo_counter"] and
             all(.data.result[];
 			.metric.host == "otel-demo-host" and
 			.metric.env == "compose" and

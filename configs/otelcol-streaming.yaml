@@ -8,7 +8,7 @@ receivers:
       endpoint: 0.0.0.0:8081
       token: ${env:ZABBIX_STREAM_TOKEN}
     prom:
-      prefix: zabbix_stream_
+      prefix: zabbix_
       const_labels: {env: production, instance: zabbix-01}
 processors:
   memory_limiter: {check_interval: 1s, limit_mib: 256}
@@ -16,6 +16,9 @@ processors:
 exporters:
   prometheusremotewrite:
     endpoint: ${env:VICTORIAMETRICS_REMOTE_WRITE_URL}
+    # For a VM endpoint protected by Bearer authentication, uncomment:
+    # headers:
+    #   Authorization: Bearer ${env:VICTORIAMETRICS_TOKEN}
 service:
   telemetry:
     logs:

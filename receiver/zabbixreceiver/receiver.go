@@ -15,6 +15,7 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/consumer/consumererror"
+	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/receiver"
 	"go.opentelemetry.io/collector/receiver/receiverhelper"
 	"go.opentelemetry.io/otel/attribute"
@@ -283,13 +284,9 @@ func (r *zabbixReceiver) values(ctx context.Context) (err error) {
 	})
 	points = int(stats.Emitted)
 	r.telemetry.invalidValues.Add(ctx, stats.Invalid, r.telemetry.attrs)
-	if stats.Emitted > 0 {
-		if err := r.next.ConsumeMetrics(ctx, batch); err != nil {
-			return fmt.Errorf("consume Zabbix metrics: %w", consumererror.NewDownstream(err))
-		}
+	if err := r.deliver(ctx, batch); err != nil {
+		return err
 	}
-	r.telemetry.emittedPoints.Add(ctx, stats.Emitted, r.telemetry.attrs)
-	r.telemetry.valuesLastSuccess.Record(ctx, float64(time.Now().Unix()), r.telemetry.attrs)
 	r.logger.Debug("Zabbix values collected", zap.Int64("points", stats.Emitted), zap.Int64("invalid_values", stats.Invalid), zap.Duration("duration", time.Since(started)))
 	return nil
 }
@@ -327,3 +324,27 @@ func compileOptionalRegex(name, pattern string) (*regexp.Regexp, error) {
 	}
 	return compiled, nil
 }
+
+// deliver reports handoff to the next component, which may buffer asynchronously.
+// Only exporter telemetry can confirm remote storage accepted the samples.
+func (r *zabbixReceiver) deliver(ctx context.Context, batch pmetric.Metrics) error {
+	points := batch.DataPointCount()
+	if points > 0 {
+		if err := r.next.ConsumeMetrics(ctx, batch); err != nil {
+			// Downstream errors may contain credentials or request bodies. The owning
+			// component provides transport diagnostics; receiver logs only safe context.
+			r.logger.Error("Zabbix metrics delivery failed; check downstream component logs", zap.Int("points", points), zap.Bool("permanent", consumererror.IsPermanent(err)))
+			return consumererror.NewDownstream(deliveryError{err})
+		}
+	}
+	r.telemetry.emittedPoints.Add(ctx, int64(points), r.telemetry.attrs)
+	r.telemetry.valuesLastSuccess.Record(ctx, float64(time.Now().Unix()), r.telemetry.attrs)
+	return nil
+}
+
+// Keep errors.Is/As and permanent-error classification without copying an
+// arbitrary downstream error message into receiver logs or span status.
+type deliveryError struct{ cause error }
+
+func (deliveryError) Error() string     { return "downstream unavailable; check downstream component logs" }
+func (err deliveryError) Unwrap() error { return err.cause }

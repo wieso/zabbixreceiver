@@ -157,12 +157,11 @@ service:
 			}
 		}
 		require.NotNil(t, labels)
-		require.Equal(t, "Server A", labels["zabbix_host_name"])
-		require.Equal(t, "true", labels["zabbix_host_group_Linux"])
-		require.Equal(t, `["api","web"]`, labels["zabbix_item_tag_app"])
-		require.Equal(t, `[""]`, labels["zabbix_item_tag_empty"])
-		require.Equal(t, "dot", labels["zabbix_item_tag_encoded_612e62"])
-		require.Equal(t, "underscore", labels["zabbix_item_tag_a_b"])
+		require.Equal(t, "Server A", labels["host_name"])
+		require.Equal(t, "true", labels["host_group_linux"])
+		require.Equal(t, "api, web", labels["item_tag_app"])
+		require.Equal(t, "", labels["item_tag_empty"])
+		require.Equal(t, "dot, underscore", labels["item_tag_a_b"])
 	case <-time.After(5 * time.Second):
 		t.Fatal("no remote write received")
 	}

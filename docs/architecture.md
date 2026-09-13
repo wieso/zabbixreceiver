@@ -35,14 +35,14 @@ zabbix-otel/
 ├── receiver/zabbixreceiver/            # Самостоятельный Go-модуль приёмника
 │   ├── config.go                      # Конфигурация, значения по умолчанию, валидация
 │   ├── factory.go                     # Фабрика компонента OpenTelemetry
-│   ├── receiver.go                    # Жизненный цикл, обнаружение и сбор значений API
+│   ├── receiver.go                    # Жизненный цикл, сбор API и общая передача downstream
 │   ├── scheduler.go                   # Интервалы, случайные задержки, отмена задач
 │   ├── streaming.go                   # HTTP-сервер и преобразование истории NDJSON
 │   ├── telemetry.go                   # Внутренняя телеметрия приёмника
 │   ├── internal/
 │   │   ├── zabbix/                    # Типизированный клиент JSON-RPC
 │   │   ├── discovery/                 # Фильтры, лимиты, неизменяемый снимок метаданных
-│   │   └── metrics/                   # Нормализация имён и построение метрик API
+│   │   └── metrics/                   # Общая нормализация, лейблы и точки API/Streaming
 │   ├── *_test.go                      # Тесты рядом с реализацией, также в internal/
 │   └── go.mod                         # Зависимости публикуемого модуля
 ├── internal/packaging/                # Проверки документации и артефактов поставки
@@ -70,11 +70,11 @@ zabbix-otel/
 | Компонент | Ответственность |
 | --- | --- |
 | [config.go](../receiver/zabbixreceiver/config.go), [factory.go](../receiver/zabbixreceiver/factory.go) | Значения по умолчанию, проверка конфигурации и создание изолированных экземпляров приёмника |
-| [receiver.go](../receiver/zabbixreceiver/receiver.go) | Жизненный цикл API, обнаружение и получение значений |
+| [receiver.go](../receiver/zabbixreceiver/receiver.go) | Жизненный цикл, обнаружение и получение значений API; общая передача downstream и безопасное представление его ошибок |
 | [scheduler.go](../receiver/zabbixreceiver/scheduler.go) | Отдельный последовательный цикл для каждой задачи, интервалы, jitter и отмена |
 | [internal/zabbix](../receiver/zabbixreceiver/internal/zabbix/) | Типизированный клиент JSON-RPC: `host.get`, `item.get` и аутентификация |
 | [internal/discovery](../receiver/zabbixreceiver/internal/discovery/) | Отбор элементов и публикация снимка метаданных |
-| [internal/metrics](../receiver/zabbixreceiver/internal/metrics/) | Преобразование API в точки gauge и общая нормализация имён |
+| [internal/metrics](../receiver/zabbixreceiver/internal/metrics/) | Общие проверка чисел и времени, нормализация имён, лейблы и построение точек gauge для API/Streaming |
 | [streaming.go](../receiver/zabbixreceiver/streaming.go) | HTTP-сервер, разбор NDJSON и преобразование входящей истории |
 | [telemetry.go](../receiver/zabbixreceiver/telemetry.go) | Инструменты наблюдаемости через инфраструктуру Collector |
 
@@ -82,7 +82,7 @@ zabbix-otel/
 
 В API обнаружение публикует неизменяемый снимок через `discovery.Store` (`atomic.Pointer[Snapshot]`); читатель получает копию списка. Сбор значений использует один снимок в течение цикла. Задачи обнаружения и сбора могут работать параллельно, но каждая задача выполняется последовательно. При перезапуске снимок строится заново. Подробные правила отбора, замены снимка и передачи пакета находятся в [описании обнаружения](configuration.md) и [цикла значений](configuration.md).
 
-Streaming создаёт HTTP-сервер. По умолчанию API-клиент и планировщик не используются; отбор выполняет отправитель. При `streaming.enrich_with_api: true` задача discovery обновляет общий неизменяемый кэш с индексом по `itemid`, а обработчик берёт один снимок на весь запрос. Задача values в Streaming не запускается. Запросы обрабатываются параллельно и полностью разбираются перед передачей метрик. Оба режима используют общий код формирования [лейблов метаданных](metadata.md) в `internal/metrics/metadata.go`. Порядок проверки запросов, завершения сервера и гарантии доставки описаны в [контракте Streaming](configuration.md).
+Streaming создаёт HTTP-сервер. По умолчанию API-клиент и планировщик не используются; отбор выполняет отправитель. При `streaming.enrich_with_api: true` задача discovery обновляет общий неизменяемый кэш с индексом по `itemid`, а обработчик берёт один снимок на весь запрос. Задача values в Streaming не запускается. Запросы обрабатываются параллельно и полностью разбираются перед передачей метрик. Оба режима используют `ParseSample` и `AppendGauge` из `internal/metrics/builder.go`, нормализацию имён из `internal/metrics/name.go` и формирование [лейблов метаданных](metadata.md) из `internal/metrics/metadata.go`. При наличии ключа элемента имя строится из него; без ключа используется отображаемое название. Общий `deliver` в `receiver.go` передаёт пакет следующему компоненту и учитывает результат; подтверждение записи в VM отслеживается отдельно по exporter. Порядок проверки запросов, завершения сервера и гарантии доставки описаны в [контракте Streaming](configuration.md).
 
 У приёмника нет собственного постоянного хранилища. В демонстрации PostgreSQL принадлежит Zabbix, VictoriaMetrics хранит временные ряды, а том `demo-config` содержит подготовленную конфигурацию Collector. Их создание и удаление описаны в [инструкции демонстрации](deployment.md).
 

@@ -69,8 +69,8 @@ func TestDocumentationContract(t *testing.T) {
 	}
 	moduleReadme := readAsset(t, "receiver/zabbixreceiver/README.md")
 	for _, clause := range []string{
-		"github.com/wieso/zabbixreceiver/receiver/zabbixreceiver v0.2.0",
-		"receiver/zabbixreceiver/v0.2.0",
+		"github.com/wieso/zabbixreceiver/receiver/zabbixreceiver v0.3.0",
+		"receiver/zabbixreceiver/v0.3.0",
 		"Collector/Contrib v0.160.0",
 	} {
 		if !strings.Contains(moduleReadme, clause) {
@@ -132,7 +132,7 @@ func TestDocumentationContract(t *testing.T) {
 		"VictoriaMetrics VMUI URL":             "http://127.0.0.1:8428/vmui/",
 		"Zabbix demo UI credentials":           "`Admin` / `zabbix`",
 		"VictoriaMetrics API demo query":       `zabbix_api_demo_counter{host="otel-demo-host",env="compose"}`,
-		"VictoriaMetrics streaming demo query": `zabbix_stream_OpenTelemetry_demo_counter{host="otel-demo-host",env="compose"}`,
+		"VictoriaMetrics streaming demo query": `zabbix_stream_open_telemetry_demo_counter{host="otel-demo-host",env="compose"}`,
 		"Zabbix UI port override":              "ZABBIX_WEB_PORT",
 		"VictoriaMetrics port override":        "VICTORIAMETRICS_PORT",
 	} {
@@ -262,7 +262,7 @@ func TestDualModuleAutomationContract(t *testing.T) {
 
 func TestOCBExamplesContract(t *testing.T) {
 	published := readAsset(t, "examples/ocb/builder-config.yaml")
-	wantModule := "github.com/wieso/zabbixreceiver/receiver/zabbixreceiver v0.2.0"
+	wantModule := "github.com/wieso/zabbixreceiver/receiver/zabbixreceiver v0.3.0"
 	if !strings.Contains(published, wantModule) {
 		t.Errorf("published OCB example missing %q", wantModule)
 	}
@@ -1187,8 +1187,8 @@ func TestVerifierRequiresBothFreshModes(t *testing.T) {
 		success bool
 	}{
 		{"API only", `[{"metric":{"__name__":"zabbix_api_demo_counter","host":"otel-demo-host","env":"compose","item_key":"demo.counter","hostid":"1","itemid":"2"},"value":[100,1]}]`, false},
-		{"stale streaming", `[{"metric":{"__name__":"zabbix_api_demo_counter","host":"otel-demo-host","env":"compose","item_key":"demo.counter","hostid":"1","itemid":"2"},"value":[100,1]},{"metric":{"__name__":"zabbix_stream_OpenTelemetry_demo_counter","host":"otel-demo-host","env":"compose","itemid":"2"},"value":[99,1]}]`, false},
-		{"both fresh", `[{"metric":{"__name__":"zabbix_api_demo_counter","host":"otel-demo-host","env":"compose","item_key":"demo.counter","hostid":"1","itemid":"2"},"value":[100,1]},{"metric":{"__name__":"zabbix_stream_OpenTelemetry_demo_counter","host":"otel-demo-host","env":"compose","itemid":"2"},"value":[100,1]}]`, true},
+		{"stale streaming", `[{"metric":{"__name__":"zabbix_api_demo_counter","host":"otel-demo-host","env":"compose","item_key":"demo.counter","hostid":"1","itemid":"2"},"value":[100,1]},{"metric":{"__name__":"zabbix_stream_open_telemetry_demo_counter","host":"otel-demo-host","env":"compose","itemid":"2"},"value":[99,1]}]`, false},
+		{"both fresh", `[{"metric":{"__name__":"zabbix_api_demo_counter","host":"otel-demo-host","env":"compose","item_key":"demo.counter","hostid":"1","itemid":"2"},"value":[100,1]},{"metric":{"__name__":"zabbix_stream_open_telemetry_demo_counter","host":"otel-demo-host","env":"compose","itemid":"2"},"value":[100,1]}]`, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
