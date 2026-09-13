@@ -13,10 +13,11 @@ import (
 
 // Config controls the OpenTelemetry metric representation of Zabbix items.
 type Config struct {
-	Prefix          string
-	ConstLabels     map[string]string
-	ScopeName       string
-	MetadataEnabled bool
+	Prefix           string
+	ConstLabels      map[string]string
+	ScopeName        string
+	MetadataEnabled  bool
+	HostGroupsFormat string
 }
 
 // Stats reports how many Zabbix values were converted, malformed, or unmatched.
@@ -101,7 +102,7 @@ func AppendGauge(metrics pmetric.MetricSlice, item discovery.ItemMeta, number fl
 		point.Attributes().PutStr("item_key", item.Key)
 	}
 	if config.MetadataEnabled {
-		PutMetadata(point.Attributes(), item.Metadata)
+		PutMetadata(point.Attributes(), item.Metadata, config.HostGroupsFormat)
 	}
 	return true
 }

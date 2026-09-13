@@ -277,10 +277,11 @@ func (r *zabbixReceiver) values(ctx context.Context) (err error) {
 	}
 
 	batch, stats := otelmetrics.Build(items, values, otelmetrics.Config{
-		Prefix:          r.config.Prom.Prefix,
-		ConstLabels:     r.config.Prom.ConstLabels,
-		ScopeName:       r.settings.ID.String(),
-		MetadataEnabled: r.config.Metadata.Enabled,
+		Prefix:           r.config.Prom.Prefix,
+		ConstLabels:      r.config.Prom.ConstLabels,
+		ScopeName:        r.settings.ID.String(),
+		MetadataEnabled:  r.config.Metadata.Enabled,
+		HostGroupsFormat: r.config.Metadata.HostGroupsFormat,
 	})
 	points = int(stats.Emitted)
 	r.telemetry.invalidValues.Add(ctx, stats.Invalid, r.telemetry.attrs)

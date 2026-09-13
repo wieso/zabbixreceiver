@@ -26,6 +26,7 @@ type Config struct {
 }
 
 type MetadataConfig struct {
+	HostGroupsFormat  string   `mapstructure:"host_groups_format"`
 	Enabled           bool     `mapstructure:"enabled"`
 	InheritedHostTags bool     `mapstructure:"inherited_host_tags"`
 	InventoryFields   []string `mapstructure:"inventory_fields"`
@@ -84,7 +85,7 @@ type FiltersConfig struct {
 func createDefaultConfig() component.Config {
 	return &Config{
 		Mode:      "api",
-		Metadata:  MetadataConfig{Enabled: true, InheritedHostTags: true},
+		Metadata:  MetadataConfig{Enabled: true, InheritedHostTags: true, HostGroupsFormat: "names"},
 		Streaming: StreamingConfig{Endpoint: "127.0.0.1:8081", MaxRequestBodySize: 10485760, Timeout: 30 * time.Second},
 		Schedule: ScheduleConfig{
 			Jitter: 5 * time.Second,
@@ -157,6 +158,11 @@ func (c *Config) Validate() error {
 
 func (c *Config) validateResolved() error {
 	var errs []error
+	switch c.Metadata.HostGroupsFormat {
+	case "names", "flags", "both":
+	default:
+		errs = append(errs, errors.New("metadata.host_groups_format must be names, flags or both"))
+	}
 	for _, field := range c.Metadata.InventoryFields {
 		if !regexp.MustCompile(`^[a-z][a-z0-9_]*$`).MatchString(field) {
 			errs = append(errs, errors.New("metadata.inventory_fields must contain non-empty inventory field names"))
