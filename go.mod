@@ -8,7 +8,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.160.0
 	github.com/prometheus/prometheus v0.314.0
 	github.com/stretchr/testify v1.12.1
-	github.com/wieso/zabbixreceiver/receiver/zabbixreceiver v0.3.3
+	github.com/wieso/zabbixreceiver/receiver/zabbixreceiver v0.3.4
 	go.opentelemetry.io/collector/component v1.66.0
 	go.opentelemetry.io/collector/confmap/provider/envprovider v1.66.0
 	go.opentelemetry.io/collector/confmap/provider/fileprovider v1.66.0

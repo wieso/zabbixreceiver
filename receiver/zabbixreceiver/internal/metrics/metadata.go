@@ -18,7 +18,7 @@ func PutMetadata(attrs pcommon.Map, meta zabbix.Metadata, format string) {
 	putTags(attrs, "item_tag_", meta.ItemTags)
 	putTags(attrs, "host_tag_", meta.HostTags)
 	putTags(attrs, "host_inherited_tag_", meta.InheritedHostTags)
-	if format == "flags" || format == "both" {
+	if format == "" || format == "flags" || format == "both" {
 		for _, group := range meta.Groups {
 			attrs.PutStr("host_group_"+labelKey(group), "true")
 		}

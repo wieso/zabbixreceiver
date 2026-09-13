@@ -17,10 +17,12 @@ import (
 )
 
 func TestStreamingPreservesMetadataAndTagIdentity(t *testing.T) {
-	for _, format := range []string{"names", "flags", "both"} {
+	for _, format := range []string{"default", "names", "flags", "both"} {
 		t.Run(format, func(t *testing.T) {
 			cfg := validConfig()
-			cfg.Metadata.HostGroupsFormat = format
+			if format != "default" {
+				cfg.Metadata.HostGroupsFormat = format
+			}
 			cfg.Mode = "streaming"
 			next := newRecordingConsumer(t)
 			r := newTestReceiver(t, cfg, nil, next)
@@ -168,7 +170,7 @@ func TestMetadataCanBeDisabled(t *testing.T) {
 }
 
 func TestPollingMetadataFromAPIToDataPoint(t *testing.T) {
-	for _, format := range []string{"names", "flags", "both"} {
+	for _, format := range []string{"default", "names", "flags", "both"} {
 		t.Run(format, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				var req struct {
@@ -199,7 +201,9 @@ func TestPollingMetadataFromAPIToDataPoint(t *testing.T) {
 			}))
 			defer server.Close()
 			cfg := validConfig()
-			cfg.Metadata.HostGroupsFormat = format
+			if format != "default" {
+				cfg.Metadata.HostGroupsFormat = format
+			}
 			cfg.Zabbix.URL = server.URL
 			cfg.Metadata.InventoryFields = []string{"os", "location"}
 			next := newRecordingConsumer(t)
@@ -239,7 +243,7 @@ func TestHostGroupsFormatValidation(t *testing.T) {
 		require.NoError(t, cfg.validateResolved())
 	}
 	cfg := validConfig()
-	require.Equal(t, "names", cfg.Metadata.HostGroupsFormat)
+	require.Equal(t, "both", cfg.Metadata.HostGroupsFormat)
 	cfg.Metadata.HostGroupsFormat = "invalid"
 	require.ErrorContains(t, cfg.validateResolved(), "metadata.host_groups_format")
 }

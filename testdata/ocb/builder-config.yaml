@@ -3,10 +3,10 @@ dist:
   name: otelcol-zabbix
   description: Local Zabbix receiver OCB verification binary
   output_path: ./.ocb/local
-  version: 0.3.3-dev
+  version: 0.3.4-dev
 
 receivers:
-  - gomod: github.com/wieso/zabbixreceiver/receiver/zabbixreceiver v0.3.3
+  - gomod: github.com/wieso/zabbixreceiver/receiver/zabbixreceiver v0.3.4
     path: ./receiver/zabbixreceiver
 
 processors:
