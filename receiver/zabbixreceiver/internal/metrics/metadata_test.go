@@ -22,9 +22,30 @@ func TestMetadataPreservesGroupNames(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			original := slices.Clone(tc.groups)
 			attrs := pcommon.NewMap()
-			PutMetadata(attrs, zabbix.Metadata{Groups: tc.groups})
+			PutMetadata(attrs, zabbix.Metadata{Groups: tc.groups}, "names")
 			require.Equal(t, tc.want, attrs.AsRaw())
 			require.Equal(t, original, tc.groups, "shared source metadata must not be mutated")
+		})
+	}
+}
+
+func TestMetadataGroupFormats(t *testing.T) {
+	for _, tc := range []struct {
+		format string
+		want   map[string]any
+	}{
+		{"names", map[string]any{"host_groups": "Linux servers, Production"}},
+		{"flags", map[string]any{"host_group_linux_servers": "true", "host_group_production": "true"}},
+		{"both", map[string]any{"host_groups": "Linux servers, Production", "host_group_linux_servers": "true", "host_group_production": "true"}},
+		{"", map[string]any{"host_groups": "Linux servers, Production"}},
+	} {
+		t.Run(tc.format, func(t *testing.T) {
+			attrs := pcommon.NewMap()
+			PutMetadata(attrs, zabbix.Metadata{Groups: []string{"Production", "Linux servers", "Production"}}, tc.format)
+			require.Equal(t, tc.want, attrs.AsRaw())
+			empty := pcommon.NewMap()
+			PutMetadata(empty, zabbix.Metadata{}, tc.format)
+			require.Empty(t, empty.AsRaw())
 		})
 	}
 }

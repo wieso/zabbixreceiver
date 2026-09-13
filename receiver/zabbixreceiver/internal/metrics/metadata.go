@@ -9,7 +9,7 @@ import (
 )
 
 // PutMetadata adds readable labels after constant labels so source metadata wins.
-func PutMetadata(attrs pcommon.Map, meta zabbix.Metadata) {
+func PutMetadata(attrs pcommon.Map, meta zabbix.Metadata, format string) {
 	for key, value := range map[string]string{"host_name": meta.HostName, "item_name": meta.ItemName, "value_type": meta.ValueType, "item_units": meta.Units} {
 		if value != "" {
 			attrs.PutStr(key, value)
@@ -18,7 +18,12 @@ func PutMetadata(attrs pcommon.Map, meta zabbix.Metadata) {
 	putTags(attrs, "item_tag_", meta.ItemTags)
 	putTags(attrs, "host_tag_", meta.HostTags)
 	putTags(attrs, "host_inherited_tag_", meta.InheritedHostTags)
-	if len(meta.Groups) > 0 {
+	if format == "flags" || format == "both" {
+		for _, group := range meta.Groups {
+			attrs.PutStr("host_group_"+labelKey(group), "true")
+		}
+	}
+	if len(meta.Groups) > 0 && format != "flags" {
 		groups := slices.Clone(meta.Groups)
 		slices.Sort(groups)
 		attrs.PutStr("host_groups", strings.Join(slices.Compact(groups), ", "))

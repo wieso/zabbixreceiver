@@ -23,6 +23,14 @@ func TestCollectorValidateUsesResolvedZabbixConfig(t *testing.T) {
 		wantError    []string
 	}{
 		{
+			name: "invalid host group format",
+			receiverYAML: `
+    mode: streaming
+    metadata:
+      host_groups_format: invalid`,
+			wantError: []string{"metadata.host_groups_format"},
+		},
+		{
 			name: "streaming enrichment with API credentials",
 			receiverYAML: `
     mode: streaming
@@ -30,6 +38,7 @@ func TestCollectorValidateUsesResolvedZabbixConfig(t *testing.T) {
       enabled: true
       inherited_host_tags: true
       inventory_fields: [os, location]
+      host_groups_format: both
     streaming:
       enrich_with_api: true`,
 			environment: map[string]string{"ZABBIX_URL": "https://env.example/api_jsonrpc.php", "ZABBIX_TOKEN": "env-secret"},

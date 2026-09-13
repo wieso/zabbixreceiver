@@ -197,7 +197,7 @@ func (r *zabbixReceiver) handleHistory(w http.ResponseWriter, req *http.Request)
 					meta.ItemTags = record.ItemTags
 				}
 				item := discovery.ItemMeta{ID: string(record.ItemID), Host: record.Host.Host, HostID: hostID, Key: itemKey, Name: record.Name, Metadata: meta}
-				if !otelmetrics.AppendGauge(scope.Metrics(), item, number, timestamp, otelmetrics.Config{Prefix: r.config.Prom.Prefix, ConstLabels: r.config.Prom.ConstLabels, MetadataEnabled: r.config.Metadata.Enabled}) {
+				if !otelmetrics.AppendGauge(scope.Metrics(), item, number, timestamp, otelmetrics.Config{Prefix: r.config.Prom.Prefix, ConstLabels: r.config.Prom.ConstLabels, MetadataEnabled: r.config.Metadata.Enabled, HostGroupsFormat: r.config.Metadata.HostGroupsFormat}) {
 					skip()
 					continue
 				}
