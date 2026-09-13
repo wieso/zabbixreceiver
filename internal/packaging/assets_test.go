@@ -69,8 +69,8 @@ func TestDocumentationContract(t *testing.T) {
 	}
 	moduleReadme := readAsset(t, "receiver/zabbixreceiver/README.md")
 	for _, clause := range []string{
-		"github.com/wieso/zabbixreceiver/receiver/zabbixreceiver v0.3.3",
-		"receiver/zabbixreceiver/v0.3.3",
+		"github.com/wieso/zabbixreceiver/receiver/zabbixreceiver v0.3.4",
+		"receiver/zabbixreceiver/v0.3.4",
 		"Collector/Contrib v0.160.0",
 	} {
 		if !strings.Contains(moduleReadme, clause) {
@@ -262,7 +262,7 @@ func TestDualModuleAutomationContract(t *testing.T) {
 
 func TestOCBExamplesContract(t *testing.T) {
 	published := readAsset(t, "examples/ocb/builder-config.yaml")
-	wantModule := "github.com/wieso/zabbixreceiver/receiver/zabbixreceiver v0.3.3"
+	wantModule := "github.com/wieso/zabbixreceiver/receiver/zabbixreceiver v0.3.4"
 	if !strings.Contains(published, wantModule) {
 		t.Errorf("published OCB example missing %q", wantModule)
 	}

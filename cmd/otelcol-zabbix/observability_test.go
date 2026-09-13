@@ -159,6 +159,7 @@ service:
 		require.NotNil(t, labels)
 		require.Equal(t, "Server A", labels["host_name"])
 		require.Equal(t, "Linux", labels["host_groups"])
+		require.Equal(t, "true", labels["host_group_linux"])
 		require.Equal(t, "api, web", labels["item_tag_app"])
 		require.Equal(t, "", labels["item_tag_empty"])
 		require.Equal(t, "dot, underscore", labels["item_tag_a_b"])

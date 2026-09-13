@@ -85,7 +85,7 @@ type FiltersConfig struct {
 func createDefaultConfig() component.Config {
 	return &Config{
 		Mode:      "api",
-		Metadata:  MetadataConfig{Enabled: true, InheritedHostTags: true, HostGroupsFormat: "names"},
+		Metadata:  MetadataConfig{Enabled: true, InheritedHostTags: true, HostGroupsFormat: "both"},
 		Streaming: StreamingConfig{Endpoint: "127.0.0.1:8081", MaxRequestBodySize: 10485760, Timeout: 30 * time.Second},
 		Schedule: ScheduleConfig{
 			Jitter: 5 * time.Second,
