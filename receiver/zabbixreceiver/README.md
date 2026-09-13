@@ -6,10 +6,10 @@
 
 ```yaml
 receivers:
-  - gomod: github.com/wieso/zabbixreceiver/receiver/zabbixreceiver v0.3.1
+  - gomod: github.com/wieso/zabbixreceiver/receiver/zabbixreceiver v0.3.2
 ```
 
-Версия v0.3.1 проверяется с Collector/Contrib v0.160.0 и стабильными модулями Collector v1.66.0; требуется Go 1.26.8 или новее. Пример требует опубликованного тега `receiver/zabbixreceiver/v0.3.1`. Для проверки рабочей копии используйте `make verify-ocb-local` из корня репозитория.
+Версия v0.3.2 проверяется с Collector/Contrib v0.160.0 и стабильными модулями Collector v1.66.0; требуется Go 1.26.8 или новее. Пример требует опубликованного тега `receiver/zabbixreceiver/v0.3.2`. Для проверки рабочей копии используйте `make verify-ocb-local` из корня репозитория.
 
 Опубликованный модуль v0.1.0 поддерживает опрос API и проверен с Collector/Contrib v0.154.0 и стабильными модулями v1.60.0. Streaming, метаданные и телеметрия доступны с v0.2.0; v0.3.0 унифицирует формат метрик API/Streaming и меняет имена и лейблы. Правила перехода — в [заметках к выпуску](../../docs/releases/v0.3.0.md).
 
