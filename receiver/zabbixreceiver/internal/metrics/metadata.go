@@ -18,8 +18,10 @@ func PutMetadata(attrs pcommon.Map, meta zabbix.Metadata) {
 	putTags(attrs, "item_tag_", meta.ItemTags)
 	putTags(attrs, "host_tag_", meta.HostTags)
 	putTags(attrs, "host_inherited_tag_", meta.InheritedHostTags)
-	for _, group := range meta.Groups {
-		attrs.PutStr("host_group_"+labelKey(group), "true")
+	if len(meta.Groups) > 0 {
+		groups := slices.Clone(meta.Groups)
+		slices.Sort(groups)
+		attrs.PutStr("host_groups", strings.Join(slices.Compact(groups), ", "))
 	}
 	inventory := make([]zabbix.Tag, 0, len(meta.Inventory))
 	for key, value := range meta.Inventory {
