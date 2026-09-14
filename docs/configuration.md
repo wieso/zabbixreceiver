@@ -185,6 +185,8 @@ VICTORIAMETRICS_REMOTE_WRITE_URL=https://vm.example.com/api/v1/write \
 
 Метрики Zabbix формируются как `pmetric.Metrics` и передаются следующему `consumer.Metrics` через `ConsumeMetrics`; пакетирование и отправку выполняют стандартные `batch` и `prometheusremotewrite`. Собственного клиента remote-write или Prometheus registry в приёмнике нет.
 
+Для сохранения уже записанных экспортёром данных при рестарте настройте [WAL и постоянное хранилище](deployment.md#wal-сохранение-данных-при-рестарте). Там описаны параметры, повторные попытки, ограничения буферов перед WAL и порядок восстановления. В конфигурациях из комплекта WAL по умолчанию выключен.
+
 Приёмник использует `receiver.Settings.Logger`, `MeterProvider` и стандартный `receiverhelper.ObsReport` Collector. Внутренние метрики доступны на `http://localhost:8888/metrics`; это отдельный поток от метрик Zabbix, отправляемых через pipeline.
 
 Собственные инструменты имеют атрибуты `receiver` (например, `zabbix/api`) и `mode` (`api` или `streaming`). Идентификаторы узлов/элементов, URL, токены и тексты ошибок в метки не попадают. Инструменты:
